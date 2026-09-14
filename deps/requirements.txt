@@ -1,2 +1,4 @@
 -e "./libs/biblioteca_ayed_fiuner"
 python-dotenv==1.2.2
+openpyxl==3.1.5
+pytest==9.1.1
