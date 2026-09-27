@@ -1,3 +1,6 @@
+"""Módulo de normalización de comprobantes de Proveedores.
+Este módulo implementa el patron Strategy + Factory para procesar comprobantes heterogéneos y convertirlos en objetos estandarizados para la BD"""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
@@ -5,6 +8,7 @@ from typing import Optional
 
 @dataclass
 class LineaNormalizada:
+    """Representa una línea de comprobante con datos limpios y estandarizados"""
     proveedor: str
     codigo_proveedor: str
     codigo_interno_taller: Optional[str]
