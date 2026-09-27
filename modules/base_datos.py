@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from modules.importador import cargar_historico
+from modules.carga_historico_datos import cargar_historico
 
 ESQUEMA_SQL = """
 CREATE TABLE IF NOT EXISTS proveedores (
