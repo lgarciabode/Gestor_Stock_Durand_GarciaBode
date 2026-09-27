@@ -181,4 +181,23 @@ class GestorInventarioBD:
             for f in filas
         ]
 
+
+#MOVIMIENTOS DE STOCK
+    def registrar_movimiento(self, mov: MovimientoStock) -> int:
+        """Registr un movvimiento de ingreso, egreso o ajuste"""
+        cursor = self.conexion.execute(
+            """INSERT INTO movimientos_stock (repuesto_id, proveedor_id, fecha, tipo, cantidad, codigo_proveedor_raw, origen) VALUES (?,?,?,?,?,?,?)""",
+            (
+                mov.repuesto_id,
+                mov.proveedor_id,
+                mov.fecha,
+                mov.tipo,
+                mov.cantidad,
+                mov.codigo_proveedor_raw,
+                mov.origen,
+            ),
+        )
+        self.conexion.commit()
+        return cursor.lastrowid
+
     
