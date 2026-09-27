@@ -149,3 +149,36 @@ class GestorInventarioBD:
         self.conexion.commit()
 
 
+#PARAMETROS DE STOCK Y ALERTAS
+    def actualizar_parametros_stock(self, repuesto_id: int, stock_minimo: float, stock_maximo: Optional[float], punto_reorden: Optional[float],) -> None:
+        """Permite ajustar los umbrales de reorden"""
+        self.conexion.execute(
+            """UPDATE repuestos SET stock_minimo = ?, stock_maximo = ?, punto_reorden = ? WHERE id = ?""", (stock_minimo, stock_maximo, punto_reorden, repuesto_id),
+        )
+        self.conexion.commit()
+
+
+    def obtener_repuestos_bajo_reorden(self) -> List[Repuesto]:
+        """Retorna repuestos cuyo stock actual cayo por debajo o es igual al punto de reorden"""
+        cursor = self.conexion.execute(
+            """SELECT * FROM repuestos WHERE stock_actual <= punto_reorden AND activo = 1"""
+        )
+        filas = cursor.fetchall()
+        return [
+            Repuesto(
+                id=f["id"],
+                descripcion_normalizada=f["descripcion_normalizada"],
+                marca_id=f["marca_id"],
+                categoria_id=f["categoria_id"],
+                especificaciones=f["especificaciones"],
+                unidad_medida=f["unidad_medida"],
+                stock_minimo=f["stock_minimo"],
+                stock_maximo=f["stock_maximo"],
+                punto_reorden=f["punto_reorden"],
+                stock_actual=f["stock_actual"],
+                activo=bool(f["activo"]),
+            )
+            for f in filas
+        ]
+
+    
