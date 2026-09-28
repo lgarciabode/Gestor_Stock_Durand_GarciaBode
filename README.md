@@ -69,4 +69,56 @@ El sistema está diseñado bajo una arquitectura modular y orientada a objetos (
 ├── config.py                   # Configuración centralizada de rutas y variables de entorno
 ├── main.py                     # Ejecución principal de pruebas y demostración
 └── README.md                   # Documentación general del repositorio
+```
 
+## ⚙️ Requisitos e Instalación
+
+1. **Clonar el repositorio:**
+   ```bash
+   git clone [https://github.com/tu-usuario/Gestor_Stock_Durand_GarciaBode.git](https://github.com/tu-usuario/Gestor_Stock_Durand_GarciaBode.git)
+   cd Gestor_Stock_Durand_GarciaBode
+    ```
+
+2. **Crear y activar un entorno virtual**
+    ```bash
+    python -m venv venv
+
+    # En Windows:
+    venv\Scripts\activate
+
+    # En Linux/macOS:
+    source venv/bin/activate
+    ```
+
+3. **Instalar dependencias**
+    ```bash
+    pip install openpyxl python-dotenv
+    ```
+
+4. **Configurar el archivo .env:**
+    Crear un archivo .env en la raíz del proyecto definiendo las rutas locales:
+    ```bash
+    source venv/bin/activate
+    ```
+
+3. **Instalar dependencias**
+    ```bash
+    DATABASE_URL=data/stock_taller.sqlite3
+    RUTA_EXCEL_HISTORICO=data/base_stock_taller.xlsx
+    ```
+
+4. **Inicializar base de datos**
+    ```bash
+    python apps/inicializar_bd.py
+    ```
+
+
+
+## 🙎‍♀️🙎🙎‍♀️ Autoras
+* Durand, Camila Ayelen
+* García Bode, Lucía Araceli
+
+
+
+## 📅 Cursado
+2do Cuatrimestre de 2026 — Universidad Nacional de Entre Ríos (UNER)
