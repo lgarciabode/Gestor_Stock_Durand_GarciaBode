@@ -32,36 +32,41 @@ pip install -r .\deps\requirements.txt
 
 ---
 
-# 🐍 Nombre del Proyecto
+# 🛠️ Sistema de Gestión de Inventario y Predicción de Compras — Taller Durand & Jannon S.H.
 
-Breve descripción del proyecto:
+Sistema de gestión de inventario, normalización de comprobantes y análisis predictivo de demanda desarrollado en Python (POO + SQLite) para el **Taller de Tornería Jannon y Durand S.H.**. 
 
-Ejemplo: "Este es el proyecto integrador de la materia Programación Orientada a Objetos. Permite [describir funcionalidades principales del sistema]."
+El proyecto resuelve la digitalización de comprobantes heterogéneos de proveedores (facturas y remitos), automatiza el control de existencias en tiempo real mediante *triggers* relacionales y proporciona herramientas para la gestión de stock, alertas de reorden y proyecciones de compras.
 
 ---
+
 ## 🏗 Arquitectura General
 
-Explica brevemente cómo está organizado el código (módulos, clases, aplicaciones, etc.)
+El sistema está diseñado bajo una arquitectura modular y orientada a objetos (POO), separando las responsabilidades de dominio, la capa de persistencia en SQLite, las estrategias de normalización de datos y los puntos de entrada de la aplicación.
 
-La estructura de directorios del proyecto se organiza de la siguiente manera:
-- [**`apps/`**](./apps): Scripts principales y puntos de entrada de las aplicaciones.
-- [**`data/`**](./data): Datos utilizados o generados por el proyecto.
-- [**`deps/`**](./deps): Dependencias del proyecto.
-- [**`docs/`**](./docs): Documentación e informes del proyecto.
-- [**`libs/`**](./libs): Bibliotecas locales reutilizables (ej. `biblioteca_ayed_fiuner`).
-- [**`modules/`**](./modules): Lógica de dominio, clases y controladores del sistema orientado a objetos.
-- [**`templates/`**](./templates): Plantillas HTML para el renderizado de vistas (si el proyecto requiere interfaz web).
-- [**`tests/`**](./tests): Pruebas unitarias del proyecto.
+### Principales Componentes Técnicos
+* **Dominio Puro (`modules/modelos.py`):** Clases orientadas a objetos (`Proveedor`, `Marca`, `Categoria`, `Repuesto`, `MovimientoStock`) utilizando `@dataclass` para representar las entidades clave y encapsular métodos con reglas del negocio.
+* **Normalización de Insumos (`modules/parsers.py`):** Implementación de los patrones **Strategy** y **Factory** (`ParserProveedor`, `ParserIriondo`, `ParserEdMa`, `ParserProdumat`) para extraer, limpiar y estandarizar catálogos y comprobantes heterogéneos.
+* **Persistencia e Integridad (`modules/base_datos.py` y `modules/crud.py`):** Esquema relacional en SQLite con soporte para *Foreign Keys*, la tabla intermedia de mapeo `repuesto_codigo_proveedor` y el disparador automático `trg_movimientos_actualiza_stock` que gestiona las existencias en tiempo real de forma atómica. Encapsulado en la clase de servicio `GestorInventarioBD`.
+* **Migración Histórica (`modules/carga_historico_datos.py`):** Carga inicial transaccional (ACID) que procesa planillas históricas en Excel sin duplicar información ni cargar gastos administrativos al stock físico.
 
----
+### Estructura de Directorios
 
-## 🙎‍♀️🙎‍♂️ Autores:
-    - Apellido y Nombre del primer integrante
-    - Apellido y Nombre del segundo integrante
+```text
+.
+├── apps/                       # Puntos de entrada y scripts auxiliares
+│   └── inicializar_bd.py       # Script de autoinicialización del esquema y carga inicial
+├── data/                       # Archivos de datos históricos (.xlsx) y base SQLite (.sqlite3)
+├── docs/                       # Especificaciones del proyecto, diagrama DFD y documentación
+├── modules/                    # Módulos centrales de la lógica del sistema
+│   ├── base_datos.py           # DDL, conexión SQLite y disparadores (triggers)
+│   ├── carga_historico_datos.py# Migración de datos históricos desde Excel
+│   ├── crud.py                 # GestorInventarioBD (Alta, Lectura, Modificación, Baja)
+│   ├── modelos.py              # Entidades del dominio (dataclasses)
+│   └── parsers.py              # Parsers por proveedor (Strategy + Factory)
+├── tests/                      # Pruebas unitarias e integración de los módulos
+├── .env                        # Variables de entorno locales
+├── config.py                   # Configuración centralizada de rutas y variables de entorno
+├── main.py                     # Ejecución principal de pruebas y demostración
+└── README.md                   # Documentación general del repositorio
 
-## 📅 Cuatrimestre de cursado:
-    1er/2do cuatrimestre del 20xx
-
----
-
-> **Consejo**: Mantén este README **actualizado** conforme evoluciona el proyecto, y elimina (o añade) secciones según necesites. Esta plantilla es sólo un punto de partida general.
