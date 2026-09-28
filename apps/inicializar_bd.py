@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from modules.base_datos import inicializar_si_hace_falta
-from modules.config import DATABASE_URL, RUTA_EXCEL_HISTORICO
+from config import DATABASE_URL, RUTA_EXCEL_HISTORICO
 
 if __name__ == "__main__":
     inicializar_si_hace_falta(DATABASE_URL, RUTA_EXCEL_HISTORICO)
