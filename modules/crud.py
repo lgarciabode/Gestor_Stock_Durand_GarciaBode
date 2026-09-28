@@ -1,30 +1,30 @@
-"""Modulo de operaciones CRUD, gestion de inventario. 
+"""Modulo de operaciones CRUD, gestion de inventario.
 Encapsula las operaciones de persistencia (alta, lectura, modificacion y baja) sobre la BD SQLite para las entidades Repuesto, Proveedor y Movimientos de Stock"""
 
 import sqlite3
 from typing import List, Optional
-from modelos import Categoria, Marca, MovimientoStock, Proveedor, Repuesto
+from modules.modelos import Categoria, Marca, MovimientoStock, Proveedor, Repuesto
 
 class GestorInventarioBD:
-    """"Clase de servicio que maneja las operaciones CRUD sobre la BD"""
+    """Clase de servicio que maneja las operaciones CRUD sobre la BD"""
     def __init__(self, conexion: sqlite3.Connection):
         self.conexion = conexion
 
 #PROVEEDORES
     def crear_proveedor(self, prov: Proveedor) -> int:
-        """Inserta un nuevo proveedor en la BS y sretorna su ID asimando"""
+        """Inserta un nuevo proveedor en la BD y retorna su ID asignado"""
         cursor = self.conexion.execute(
             """INSERT INTO proveedores (nombre, contacto, telefono, email, activo) VALUES (?, ?, ?, ?, ?)""", (prov.nombre, prov.contacto, prov.telefono, prov.email, int(prov.activo)),
         )
         self.conexion.commit()
-        return cursor.lastowid
+        return cursor.lastrowid
 
     def obtener_proveedores(self, solo_activos: bool = True) -> List[Proveedor]:
-        """Obtiene la lista de todos los proveedores regitstrados."""
+        """Obtiene la lista de todos los proveedores registrados."""
         query = "SELECT * FROM proveedores"
         if solo_activos:
             query += " WHERE activo = 1"
-        cursor= self.conexion.execure(query)
+        cursor = self.conexion.execute(query)
         filas = cursor.fetchall()
         return [Proveedor(
             id = f["id"],
@@ -39,10 +39,10 @@ class GestorInventarioBD:
 
 
     def actualizar_proveedor(self, prov: Proveedor) -> None:
-        """Actualiza los datos de un provrrdor existente."""
+        """Actualiza los datos de un proveedor existente."""
         self.conexion.execute(
             """UPDATE proveedores
-            SET nombre = ?, contacto = ?, telefono = ?. email = ?, activo = ?WHERE id = ?""",
+            SET nombre = ?, contacto = ?, telefono = ?, email = ?, activo = ? WHERE id = ?""",
             (
                 prov.nombre,
                 prov.contacto,
@@ -68,7 +68,7 @@ class GestorInventarioBD:
         cursor = self.conexion.execute(
             """INSERT INTO repuestos (descripcion_normalizada, marca_id, categoria_id, especificaciones,
                 unidad_medida, stock_minimo, stock_maximo, punto_reorden, stock_actual, activo)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
             rep.descripcion_normalizada,
             rep.marca_id,
@@ -79,7 +79,7 @@ class GestorInventarioBD:
             rep.stock_maximo,
             rep.punto_reorden,
             rep.stock_actual,
-            int(rep.activo), 
+            int(rep.activo),
             ),
         )
         self.conexion.commit()
@@ -132,10 +132,10 @@ class GestorInventarioBD:
             )
 
     def actualizar_repuesto(self, rep: Repuesto) -> None:
-        """Actualiza la informacin de un repuesto"""
+        """Actualiza la informacion de un repuesto"""
         self.conexion.execute(
-            """UPDATE repuestos 
-            SET descripcion_normalizada = ?, marca_id = ?, categoria_id = ?, especificaciones = ?, unidad_medida = ?, activo = ?""",
+            """UPDATE repuestos
+            SET descripcion_normalizada = ?, marca_id = ?, categoria_id = ?, especificaciones = ?, unidad_medida = ?, activo = ? WHERE id = ?""",
             (
             rep.descripcion_normalizada,
             rep.marca_id,
@@ -184,7 +184,7 @@ class GestorInventarioBD:
 
 #MOVIMIENTOS DE STOCK
     def registrar_movimiento(self, mov: MovimientoStock) -> int:
-        """Registr un movvimiento de ingreso, egreso o ajuste"""
+        """Registra un movimiento de ingreso, egreso o ajuste"""
         cursor = self.conexion.execute(
             """INSERT INTO movimientos_stock (repuesto_id, proveedor_id, fecha, tipo, cantidad, codigo_proveedor_raw, origen) VALUES (?,?,?,?,?,?,?)""",
             (
@@ -199,5 +199,3 @@ class GestorInventarioBD:
         )
         self.conexion.commit()
         return cursor.lastrowid
-
-    
