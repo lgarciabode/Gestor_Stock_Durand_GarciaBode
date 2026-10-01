@@ -76,8 +76,6 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
     origen TEXT NOT NULL DEFAULT 'manual' CHECK (origen IN ('carga_inicial', 'manual'))
 );
 
--- El módulo predictivo (RF04) va a filtrar por repuesto_id y recorrer por
--- fecha constantemente; sin este índice cada consulta escanea toda la tabla.
 CREATE INDEX IF NOT EXISTS idx_movimientos_repuesto_fecha
     ON movimientos_stock (repuesto_id, fecha);
 
@@ -95,20 +93,16 @@ BEGIN
     WHERE id = NEW.repuesto_id;
 END;
 
--- Bandera de estado de la carga inicial: se usa para decidir si hay que
+
 -- correr `cargar_historico`, en vez de basarse en si el archivo .sqlite3
--- existe. Así, si la carga se corta a mitad de camino (Excel corrupto,
--- corte de luz, lo que sea), el próximo arranque la vuelve a intentar en
--- vez de quedarse con una base a medio poblar y creer que ya terminó.
+-- existe. 
 CREATE TABLE IF NOT EXISTS estado_sistema (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     carga_inicial_completa INTEGER NOT NULL DEFAULT 0
 );
 INSERT OR IGNORE INTO estado_sistema (id, carga_inicial_completa) VALUES (1, 0);
 
--- Tablas de soporte para etapas siguientes del proyecto (login, pedidos,
--- alertas). Se crean desde ahora para no tener que migrar el esquema
--- después; todavía no las llena ningún módulo.
+
 CREATE TABLE IF NOT EXISTS usuarios (
     id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -147,6 +141,12 @@ def obtener_conexion(ruta_bd: str) -> sqlite3.Connection:
     conexion = sqlite3.connect(ruta_bd)
     conexion.row_factory = sqlite3.Row
     conexion.execute("PRAGMA foreign_keys = ON;")
+    # WAL en vez del rollback-journal por defecto: ademas de permitir mejor
+    # concurrencia de lectura, evita "disk I/O error" en carpetas sincronizadas
+    # por OneDrive/Drive (el journal por defecto necesita un tipo de locking
+    # de archivo que esas carpetas no siempre soportan bien). Sigue siendo
+    # seguro ante cortes/crashes: el WAL se escribe a disco antes de aplicarse.
+    conexion.execute("PRAGMA journal_mode = WAL;")
     return conexion
 
 
@@ -163,20 +163,7 @@ def _carga_inicial_completa(conexion: sqlite3.Connection) -> bool:
 
 
 def inicializar_si_hace_falta(ruta_bd: str, ruta_excel_historico: str) -> None:
-    """Punto de entrada único para arrancar el sistema.
-
-    Crea el esquema si hace falta (idempotente: `CREATE TABLE IF NOT
-    EXISTS`) y, si la carga inicial todavía no se completó, la corre.
-
-    El chequeo se hace contra la bandera `estado_sistema.carga_inicial_completa`
-    y no contra "¿existe el archivo .sqlite3?": el archivo se crea apenas se
-    abre la conexión, así que si la carga se corta a mitad de camino (Excel
-    corrupto, corte de luz) el archivo ya existiría con el esquema pero sin
-    datos, y un chequeo por existencia de archivo nunca reintentaría. Por
-    eso además la carga corre en una transacción explícita: si falla, se
-    hace rollback de lo insertado hasta ese momento y la bandera queda en 0,
-    para que el próximo arranque la reintente de cero en vez de dejar datos
-    a medias mezclados con una bandera que diga "completo".
+    """Punto de entrada para arrancar el sistema.
     """
     Path(ruta_bd).parent.mkdir(parents=True, exist_ok=True)
     conexion = obtener_conexion(ruta_bd)
