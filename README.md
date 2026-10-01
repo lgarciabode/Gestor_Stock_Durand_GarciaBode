@@ -101,17 +101,31 @@ El sistema está diseñado bajo una arquitectura modular y orientada a objetos (
     source venv/bin/activate
     ```
 
-3. **Instalar dependencias**
+5. **Instalar dependencias**
     ```bash
     DATABASE_URL=data/stock_taller.sqlite3
     RUTA_EXCEL_HISTORICO=data/base_stock_taller.xlsx
     ```
 
-4. **Inicializar base de datos**
+6. **Inicializar base de datos**
     ```bash
     python apps/inicializar_bd.py
     ```
 
+7. **Verificación y Evaluación del Hito 1:** ejecute el script principal desde la raíz del proyecto:
+     ```bash
+    python main.py
+    ```
+
+    El script main.py funciona como la suite de prueba integral del Hito 1 y realiza de forma secuencial las siguientes validaciones:
+
+    * Autoinicialización e idempotencia: Invoca la creación del esquema DDL en SQLite y la migración transaccional de los comprobantes históricos desde la planilla Excel (data/base_stock_taller.xlsx), auditando cuántos movimientos fueron procesados y excluyendo los cargos administrativos que no forman parte del stock físico.
+    * Lectura del estado del dominio: Instancia la clase de servicio GestorInventarioBD para consultar la carga inicial de proveedores, repuestos, marcas y movimientos registrados.
+    * Prueba de operaciones CRUD:
+       * CREATE: Alta de un nuevo proveedor (TornoSur Herramientas S.A.) utilizando objetos de la clase Proveedor.
+       * UPDATE: Actualización de datos de contacto de la entidad.
+       * DELETE (Baja Lógica): Desactivación controlada del proveedor (activo = 0) para preservar el historial de compras y la integridad referencial.
+    * Gestión de parámetros de stock y alertas: Modificación de los umbrales operativos (stock_minimo, stock_maximo, punto_reorden) sobre repuestos del catálogo y ejecución de la consulta que detecta insumos que requieren reabastecimiento crítico.
 
 
 ## 🙎‍♀️🙎🙎‍♀️ Autoras
