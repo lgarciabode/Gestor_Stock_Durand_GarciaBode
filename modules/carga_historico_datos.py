@@ -1,3 +1,7 @@
+"""Módulo de Ingesta y Migración de Datos Históricos (Proceso ETL).
+
+Este módulo cumple la función exclusiva de extracción, transformación y carga para la migración inicial del historial del taller"""
+
 import sqlite3
 from datetime import datetime
  
