@@ -1,4 +1,4 @@
-"""Modulo de operaciones CRUD, gestion de inventario.
+"""Modulo de operaciones CRUD, gestion de inventario. Transaccional diario
 Encapsula las operaciones de persistencia (alta, lectura, modificacion y baja) sobre la BD SQLite para las entidades Repuesto, Proveedor y Movimientos de Stock"""
 
 import sqlite3
