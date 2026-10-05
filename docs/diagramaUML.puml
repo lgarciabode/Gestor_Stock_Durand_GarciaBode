@@ -1,0 +1,132 @@
+@startuml Diagrama_Clases_Gestor_Stock
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam monochrome false
+
+package "Modelo de Dominio (modules/modelos.py)" {
+    class Proveedor {
+        +id: Optional<int>
+        +nombre: str
+        +contacto: Optional<str>
+        +telefono: Optional<str>
+        +email: Optional<str>
+        +activo: bool
+        +es_valido_para_orden(): bool
+    }
+
+    class Marca {
+        +id: Optional<int>
+        +nombre: str
+    }
+
+    class Categoria {
+        +id: Optional<int>
+        +nombre: str
+        +descripcion: Optional<str>
+    }
+
+    class Repuesto {
+        +id: Optional<int>
+        +descripcion_normalizada: str
+        +marca_id: Optional<int>
+        +categoria_id: Optional<int>
+        +especificaciones: Optional<str>
+        +unidad_medida: str
+        +stock_minimo: float
+        +stock_maximo: Optional<float>
+        +punto_reorden: Optional<float>
+        +stock_actual: float
+        +activo: bool
+        +necesita_reabastecimiento(): bool
+        +esta_en_estado_critico(): bool
+        +calcular_sugerencia_compra(): float
+    }
+
+    class MovimientoStock {
+        +id: Optional<int>
+        +repuesto_id: int
+        +fecha: str
+        +tipo: str
+        +cantidad: float
+        +proveedor_id: Optional<int>
+        +codigo_proveedor_raw: Optional<str>
+        +origen: str
+    }
+
+    class LineaComprobante {
+        +fecha: str
+        +remito: str
+        +proveedor: str
+        +codigo_proveedor: str
+        +marca: str
+        +descripcion: str
+        +cantidad: float
+        +codigo_interno_taller: str
+        +tipo_linea: str
+    }
+}
+
+package "Capa de Persistencia (modules/crud.py)" {
+    class GestorInventarioBD {
+        -conexion: Connection
+        +crear_proveedor(prov: Proveedor): int
+        +obtener_proveedores(solo_activos: bool): List<Proveedor>
+        +actualizar_proveedor(prov: Proveedor): void
+        +desactivar_proveedor(proveedor_id: int): void
+        +crear_repuesto(rep: Repuesto): int
+        +obtener_repuestos(solo_activos: bool): List<Repuesto>
+        +obtener_repuesto_por_id(repuesto_id: int): Optional<Repuesto>
+        +actualizar_repuesto(rep: Repuesto): void
+        +actualizar_parametros_stock(repuesto_id: int, min: float, max: float, reorden: float): void
+        +obtener_repuestos_bajo_reorden(): List<Repuesto>
+        +registrar_movimiento(mov: MovimientoStock): int
+    }
+}
+
+package "Estrategia de Parsing (modules/parsers.py)" {
+    interface ParserProveedor {
+        {abstract} +nombre_proveedor: str
+        {abstract} +parsear(fila: dict): LineaComprobante
+    }
+
+    class ParserIriondo {
+        +nombre_proveedor: str
+        +parsear(fila: dict): LineaComprobante
+    }
+
+    class ParserEdMa {
+        +nombre_proveedor: str
+        +parsear(fila: dict): LineaComprobante
+    }
+
+    class ParserProdumat {
+        +nombre_proveedor: str
+        +parsear(fila: dict): LineaComprobante
+    }
+
+    class FabricaParsers {
+        -_parsers: dict
+        +obtener_parser(nombre_proveedor: str): ParserProveedor
+    }
+}
+
+' Relaciones entre entidades
+Repuesto "0..*" --> "0..1" Marca : pertenece a
+Repuesto "0..*" --> "0..1" Categoria : pertenece a
+MovimientoStock "0..*" --> "1" Repuesto : impacta sobre
+MovimientoStock "0..*" --> "0..1" Proveedor : provisto por
+
+' Relaciones con capa de persistencia
+GestorInventarioBD ..> Proveedor : manipula
+GestorInventarioBD ..> Repuesto : manipula
+GestorInventarioBD ..> MovimientoStock : registra
+
+' Patrón Strategy y Factory
+ParserProveedor <|.. ParserIriondo
+ParserProveedor <|.. ParserEdMa
+ParserProveedor <|.. ParserProdumat
+
+FabricaParsers --> "1..*" ParserProveedor : genera
+ParserProveedor ..> LineaComprobante : crea
+
+@enduml
