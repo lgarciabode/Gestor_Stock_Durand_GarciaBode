@@ -26,29 +26,22 @@ CREATE TABLE IF NOT EXISTS categorias (
 
 CREATE TABLE IF NOT EXISTS repuestos (
     id INTEGER PRIMARY KEY,
-    descripcion_normalizada TEXT NOT NULL,
-    marca_id INTEGER REFERENCES marcas(id),
-    categoria_id INTEGER REFERENCES categorias(id),
+    codigo TEXT NOT NULL,
+    marca_id INTEGER NOT NULL REFERENCES marcas(id),
+    categoria_id INTEGER NOT NULL REFERENCES categorias(id),
     especificaciones TEXT,
-    unidad_medida TEXT NOT NULL DEFAULT 'unidad',
+    unidad_medida TEXT NOT NULL DEFAULT 'unidad' CHECK (unidad_medida IN ('unidad', 'cm')),
     stock_minimo REAL NOT NULL DEFAULT 0,
     stock_maximo REAL,
     punto_reorden REAL,
     stock_actual REAL NOT NULL DEFAULT 0,
-    activo INTEGER NOT NULL DEFAULT 1
+    activo INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (marca_id, codigo)
 );
 
--- Resuelve el problema central: el mismo repuesto puede tener códigos
--- distintos según el proveedor (y ED-MA aporta además un código interno
--- del taller). Ver docs/modelo_datos_y_limpieza.md, sección 3.
-CREATE TABLE IF NOT EXISTS repuesto_codigo_proveedor (
-    id INTEGER PRIMARY KEY,
-    repuesto_id INTEGER NOT NULL REFERENCES repuestos(id),
-    proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
-    codigo_proveedor TEXT NOT NULL,
-    codigo_interno_taller TEXT,
-    UNIQUE (proveedor_id, codigo_proveedor)
-);
+-- Relación proveedor <-> repuesto (muchos a muchos): no tiene tabla propia.
+-- Se obtiene de `movimientos_stock`, donde cada INGRESO guarda a qué
+-- proveedor se le compró. Ver docs de decisiones del modelo (13/10/2026).
 
 -- Tabla de hechos (fact table) de movimientos de stock: un renglón por cada
 -- ingreso/egreso/ajuste, sin cabecera de remito -no se trackea información

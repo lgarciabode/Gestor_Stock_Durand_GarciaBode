@@ -19,7 +19,13 @@ from modules.base_datos import (
     obtener_conexion,
 )
 from modules.carga_historico_datos import cargar_historico
-from modules.parsers import ParserEdMa, ParserIriondo, ParserProdumat, obtener_parser
+from modules.parsers import (
+    CategoriaDesconocidaError,
+    ParserEdMa,
+    ParserIriondo,
+    ParserProdumat,
+    obtener_parser,
+)
 
 RUTA_EXCEL = Path(__file__).resolve().parent.parent / "data" / "base_stock_taller.xlsx"
 
@@ -28,7 +34,7 @@ class PruebaParsersPorProveedor(unittest.TestCase):
     """Pruebas puras de cada ParserProveedor.parsear(): no tocan la base
     de datos, son las mas rapidas y aisladas de la suite."""
 
-    def test_parser_iriondo_separa_marca_y_tipo(self):
+    def test_parser_iriondo_separa_marca_y_categoria(self):
         # Arrange
         fila = {
             "Proveedor": "Rodamientos Iriondo S.R.L.",
@@ -42,8 +48,25 @@ class PruebaParsersPorProveedor(unittest.TestCase):
 
         # Assert
         self.assertEqual(linea.marca, "KOY")
-        self.assertEqual(linea.descripcion, "RODAMIENTO")
+        self.assertEqual(linea.categoria, "RODAMIENTO")
+        self.assertEqual(linea.codigo, "32212 JR")
+        self.assertIsNone(linea.especificaciones)  # Iriondo no trae especificaciones
         self.assertEqual(linea.tipo_linea, "PRODUCTO")
+
+    def test_parser_iriondo_distingue_cadena_de_cadena_reforzada(self):
+        # Arrange
+        fila_reforzada = {"Proveedor": "Rodamientos Iriondo S.R.L.", "Código": "ASA 60/1 H -REF",
+                          "Descripción": "CHO - CADENA REFORZ.", "Cantidad": 3.05}
+        fila_comun = {"Proveedor": "Rodamientos Iriondo S.R.L.", "Código": "ASA 60/1",
+                      "Descripción": "CHO - CADENA", "Cantidad": 6.1}
+
+        # Act
+        reforzada = ParserIriondo().parsear(fila_reforzada)
+        comun = ParserIriondo().parsear(fila_comun)
+
+        # Assert
+        self.assertEqual(reforzada.categoria, "CADENA REFORZADA")
+        self.assertEqual(comun.categoria, "CADENA")
 
     def test_parser_iriondo_detecta_cargo_administrativo(self):
         # Arrange
@@ -60,7 +83,7 @@ class PruebaParsersPorProveedor(unittest.TestCase):
         # Assert
         self.assertEqual(linea.tipo_linea, "CARGO_ADMINISTRATIVO")
 
-    def test_parser_edma_separa_codigo_interno_y_fabricante(self):
+    def test_parser_edma_conserva_codigo_completo_y_separa_categoria(self):
         # Arrange
         fila = {
             "Proveedor": "Metalúrgica ED-MA S.R.L.",
@@ -73,8 +96,9 @@ class PruebaParsersPorProveedor(unittest.TestCase):
         linea = ParserEdMa().parsear(fila)
 
         # Assert
-        self.assertEqual(linea.codigo_proveedor, "HF1800300000010")
-        self.assertEqual(linea.codigo_interno_taller, "H-8025/1")
+        self.assertEqual(linea.codigo, "H-8025/1 / HF1800300000010")
+        self.assertEqual(linea.categoria, "HORQUILLA")
+        self.assertEqual(linea.especificaciones, 'K518 F DOBLE BUL 1 3/8" Z21')
         self.assertEqual(linea.marca, "ED-MA")
 
     def test_parser_produmat_marca_fija(self):
@@ -91,7 +115,30 @@ class PruebaParsersPorProveedor(unittest.TestCase):
 
         # Assert
         self.assertEqual(linea.marca, "Produmat")
+        self.assertEqual(linea.categoria, "TUBO")
+        self.assertEqual(linea.especificaciones, "TR D 44.7 X 3.9 -518 INT- X 6000")
         self.assertEqual(linea.tipo_linea, "PRODUCTO")
+
+    def test_parser_produmat_hor_se_unifica_en_horquilla(self):
+        # Arrange
+        fila = {"Proveedor": "Produmat S.A.", "Código": "2040352002",
+                "Descripción": "HOR 518 P/SOLD TR EXT", "Cantidad": 3.0}
+
+        # Act
+        linea = ParserProdumat().parsear(fila)
+
+        # Assert
+        self.assertEqual(linea.categoria, "HORQUILLA")
+        self.assertEqual(linea.especificaciones, "518 P/SOLD TR EXT")
+
+    def test_categoria_desconocida_lanza_error(self):
+        # Arrange
+        fila = {"Proveedor": "Produmat S.A.", "Código": "999",
+                "Descripción": "ENGRANAJE CONICO Z20", "Cantidad": 1.0}
+
+        # Act / Assert
+        with self.assertRaises(CategoriaDesconocidaError):
+            ParserProdumat().parsear(fila)
 
     def test_obtener_parser_desconocido_lanza_error(self):
         # Act / Assert
@@ -126,11 +173,33 @@ class PruebaCargaHistoricaSobreArchivoReal(unittest.TestCase):
         total_repuestos = self.conexion.execute("SELECT COUNT(*) FROM repuestos").fetchone()[0]
         total_proveedores = self.conexion.execute("SELECT COUNT(*) FROM proveedores").fetchone()[0]
 
-        # Assert: los cargos administrativos (39 líneas) se descartan en el
-        # parseo y nunca llegan a la base: solo quedan movimientos de producto.
+        # Assert
         self.assertEqual(total_movimientos, 213)
-        self.assertEqual(total_repuestos, 189)
+        self.assertEqual(total_repuestos, 192)
         self.assertEqual(total_proveedores, 3)
+
+    def test_variantes_z21_y_z6_son_repuestos_distintos(self):
+        # Act
+        filas = self.conexion.execute(
+            "SELECT codigo FROM repuestos WHERE codigo LIKE 'H-8025%' ORDER BY codigo"
+        ).fetchall()
+
+        # Assert
+        self.assertEqual([f[0] for f in filas],
+                         ["H-8025 / HF1800300000010", "H-8025/1 / HF1800300000010"])
+
+    def test_todos_los_repuestos_tienen_categoria(self):
+        # Act
+        sin_categoria = self.conexion.execute(
+            "SELECT COUNT(*) FROM repuestos WHERE categoria_id IS NULL"
+        ).fetchone()[0]
+        categorias = {f[0] for f in self.conexion.execute("SELECT nombre FROM categorias")}
+
+        # Assert
+        self.assertEqual(sin_categoria, 0)
+        self.assertIn("HORQUILLA", categorias)
+        self.assertNotIn("HOR", categorias)
+        self.assertNotIn("HORQ", categorias)
 
     def test_trigger_mantiene_sincronizado_stock_actual(self):
         """El trigger trg_movimientos_actualiza_stock debe dejar stock_actual
@@ -190,19 +259,15 @@ class PruebaReintentoCargaInicial(unittest.TestCase):
             "modules.base_datos.cargar_historico",
             new=cargar_historico_falla_la_primera_vez,
         ):
-            # Act (primer intento) + Assert (tiene que explotar)
             with self.assertRaises(RuntimeError):
                 inicializar_si_hace_falta(self.ruta_bd, str(RUTA_EXCEL))
 
-            # Assert: el rollback tiene que haber deshecho el INSERT parcial.
             conexion = obtener_conexion(self.ruta_bd)
             self.assertEqual(
                 conexion.execute("SELECT COUNT(*) FROM proveedores").fetchone()[0], 0
             )
             conexion.close()
 
-            # Act (segundo intento): al no haber quedado marcada como
-            # completa, reintenta.
             inicializar_si_hace_falta(self.ruta_bd, str(RUTA_EXCEL))
 
         # Assert

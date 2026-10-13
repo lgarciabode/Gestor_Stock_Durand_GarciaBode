@@ -74,7 +74,7 @@ def main() -> None:
         print("-" * 60)
         if repuestos:
             ejemplo_rep = repuestos[0]
-            print(f"Repuesto seleccionado: '{ejemplo_rep.descripcion_normalizada}' (ID: {ejemplo_rep.id})")
+            print(f"Repuesto seleccionado: código '{ejemplo_rep.codigo}' (ID: {ejemplo_rep.id})")
             print(f" - Stock Actual: {ejemplo_rep.stock_actual}")
             
             # Seteamos umbrales de seguridad

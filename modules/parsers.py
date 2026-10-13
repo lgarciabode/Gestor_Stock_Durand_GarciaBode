@@ -3,24 +3,83 @@ Este módulo implementa el patron Strategy + Factory para procesar comprobantes 
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 
 @dataclass
 class LineaNormalizada:
     """Representa una línea de comprobante con datos limpios y estandarizados"""
     proveedor: str
-    codigo_proveedor: str
-    codigo_interno_taller: Optional[str]
+    codigo: str  
     marca: str
-    descripcion: str
+    categoria: Optional[str]  
+    especificaciones: Optional[str]  
+    descripcion: str  
     cantidad: float
-    tipo_linea: str  # "PRODUCTO" | "CARGO_ADMINISTRATIVO"
+    tipo_linea: str  
+
 
 CARGOS_CONOCIDOS = {
     ("Rodamientos Iriondo S.R.L.", "000247MARCELITO"): "Embalaje/flete",
     ("Rodamientos Iriondo S.R.L.", "0007-SEGURO"): "Seguro de mercadería",
 }
+
+CATEGORIAS_POR_ABREVIATURA = {
+    "TUBO": "TUBO",
+    "HOR": "HORQUILLA",
+    "HORQ": "HORQUILLA",
+    "BUJE MANCHON": "BUJE MANCHON",
+    "REP KIT S/BOL": "REP KIT S/BOL",
+    "PERNO DE AJUSTES DE ESTRIAS": "PERNO DE AJUSTES DE ESTRIAS",
+    "RESORTE P/ZAFE": "RESORTE P/ZAFE",
+    "RETEN": "RETEN",
+    "RODAMIENTO": "RODAMIENTO",
+    "J. DE AGUJAS": "J. DE AGUJAS",
+    "CRUCETA": "CRUCETA",
+    "DISCO DENTADO": "DISCO DENTADO",
+    "CADENA REFORZ.": "CADENA REFORZADA",
+    "CADENA": "CADENA",
+    "UNION CADENA": "UNION CADENA",
+    "SOPORTE": "SOPORTE",
+    "ANILLO SEEGER": "ANILLO SEEGER",
+    "PIÑON": "PIÑON",
+    "CRAPODINA": "CRAPODINA",
+}
+
+
+class CategoriaDesconocidaError(ValueError):
+    """La descripción trae una categoría que no está en CATEGORIAS_POR_ABREVIATURA."""
+
+
+def traducir_categoria(abreviatura: str, descripcion_original: str) -> str:
+    """Devuelve la categoría unificada para una abreviatura exacta (ej. "CADENA REFORZ.")."""
+    try:
+        return CATEGORIAS_POR_ABREVIATURA[abreviatura]
+    except KeyError as exc:
+        raise CategoriaDesconocidaError(
+            f"Categoría desconocida '{abreviatura}' en la descripción '{descripcion_original}'. "
+            "Agregala a CATEGORIAS_POR_ABREVIATURA en modules/parsers.py."
+        ) from exc
+
+
+def separar_categoria_al_inicio(descripcion: str) -> Tuple[str, Optional[str]]:
+    """Para descripciones del tipo "CATEGORÍA especificaciones..." (ED-MA, Produmat).
+
+    Compara palabras completas y prueba primero las abreviaturas más largas,
+    para que "HORQ K518..." no se confunda con "HOR" ni "CADENA REFORZ." con
+    "CADENA". Devuelve (categoría unificada, especificaciones).
+    """
+    palabras = descripcion.split()
+    abreviaturas = sorted(CATEGORIAS_POR_ABREVIATURA, key=lambda a: len(a.split()), reverse=True)
+    for abreviatura in abreviaturas:
+        palabras_abreviatura = abreviatura.split()
+        if palabras[: len(palabras_abreviatura)] == palabras_abreviatura:
+            resto = " ".join(palabras[len(palabras_abreviatura):])
+            return CATEGORIAS_POR_ABREVIATURA[abreviatura], (resto or None)
+    raise CategoriaDesconocidaError(
+        f"No se reconoce la categoría al inicio de la descripción '{descripcion}'. "
+        "Agregá su abreviatura a CATEGORIAS_POR_ABREVIATURA en modules/parsers.py."
+    )
 
 
 class ParserProveedor(ABC):
@@ -34,13 +93,6 @@ class ParserProveedor(ABC):
 
 
 class ParserIriondo(ParserProveedor):
-    """Rodamientos Iriondo S.R.L.
-
-    `Código` ya es un identificador de fabricante razonablemente
-    estandarizado (ej. "32212 JR"), se conserva tal cual.
-    `Descripción` viene como "MARCA - TIPO" (ej. "SAV - RETEN"), salvo las
-    filas de flete/seguro que traen el prefijo "I.A" en vez de una marca.
-    """
 
     def parsear(self, fila: dict) -> LineaNormalizada:
         proveedor = fila["Proveedor"]
@@ -50,65 +102,61 @@ class ParserIriondo(ParserProveedor):
         if (proveedor, codigo) in CARGOS_CONOCIDOS:
             return LineaNormalizada(
                 proveedor=proveedor,
-                codigo_proveedor=codigo,
-                codigo_interno_taller=None,
+                codigo=codigo,
                 marca="I.A",
+                categoria=None,
+                especificaciones=None,
                 descripcion=descripcion,
                 cantidad=float(fila["Cantidad"]),
                 tipo_linea="CARGO_ADMINISTRATIVO",
             )
 
-        marca, separador, tipo = descripcion.partition(" - ")
+        marca, separador, categoria_cruda = descripcion.partition(" - ")
+        if not separador:
+            raise ValueError(
+                f"La descripción de Iriondo '{descripcion}' no tiene el formato 'MARCA - CATEGORÍA'."
+            )
         return LineaNormalizada(
             proveedor=proveedor,
-            codigo_proveedor=codigo,
-            codigo_interno_taller=None,
-            marca=marca.strip() if separador else "SIN MARCA",
-            descripcion=tipo.strip() if separador else descripcion,
+            codigo=codigo,
+            marca=marca.strip(),
+            categoria=traducir_categoria(categoria_cruda.strip(), descripcion),
+            especificaciones=None,
+            descripcion=descripcion,
             cantidad=float(fila["Cantidad"]),
             tipo_linea="PRODUCTO",
         )
 
 
 class ParserEdMa(ParserProveedor):
-    """Metalúrgica ED-MA S.R.L.
-
-    `Código` viene compuesto: "código interno del taller / código de
-    fabricante" (ej. "H-8025/1 / HF1800300000010"). ED-MA es la propia
-    marca del ítem, por eso no hay separador de marca en `Descripción`.
-    """
 
     def parsear(self, fila: dict) -> LineaNormalizada:
-        crudo = str(fila["Código"]).strip()
-        interno, separador, fabricante = crudo.partition(" / ")
-        codigo_proveedor = fabricante.strip() if separador else interno.strip()
-        codigo_interno = interno.strip() if separador else None
-
+        descripcion = str(fila["Descripción"]).strip()
+        categoria, especificaciones = separar_categoria_al_inicio(descripcion)
         return LineaNormalizada(
             proveedor=fila["Proveedor"],
-            codigo_proveedor=codigo_proveedor,
-            codigo_interno_taller=codigo_interno,
+            codigo=str(fila["Código"]).strip(),
             marca="ED-MA",
-            descripcion=str(fila["Descripción"]).strip(),
+            categoria=categoria,
+            especificaciones=especificaciones,
+            descripcion=descripcion,
             cantidad=float(fila["Cantidad"]),
             tipo_linea="PRODUCTO",
         )
 
 
 class ParserProdumat(ParserProveedor):
-    """Produmat S.A.
-
-    `Código` es un código propio numérico. Produmat es la propia marca,
-    igual que ED-MA: no hay separador de marca en `Descripción`.
-    """
 
     def parsear(self, fila: dict) -> LineaNormalizada:
+        descripcion = str(fila["Descripción"]).strip()
+        categoria, especificaciones = separar_categoria_al_inicio(descripcion)
         return LineaNormalizada(
             proveedor=fila["Proveedor"],
-            codigo_proveedor=str(fila["Código"]).strip(),
-            codigo_interno_taller=None,
+            codigo=str(fila["Código"]).strip(),
             marca="Produmat",
-            descripcion=str(fila["Descripción"]).strip(),
+            categoria=categoria,
+            especificaciones=especificaciones,
+            descripcion=descripcion,
             cantidad=float(fila["Cantidad"]),
             tipo_linea="PRODUCTO",
         )
@@ -122,12 +170,7 @@ _PARSERS_POR_PROVEEDOR: dict[str, ParserProveedor] = {
 
 
 def obtener_parser(nombre_proveedor: str) -> ParserProveedor:
-    """Factory: devuelve el parser correspondiente al proveedor.
 
-    Para sumar un proveedor nuevo: crear su clase ParserXxx(ParserProveedor)
-    en este archivo y agregarla acá. Si el proveedor no está registrado,
-    falla explícitamente en vez de adivinar un formato.
-    """
     try:
         return _PARSERS_POR_PROVEEDOR[nombre_proveedor]
     except KeyError as exc:
