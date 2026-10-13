@@ -1,10 +1,4 @@
-"""Entidades de dominio del sistema de gestión de stock.
 
-Son las clases que representan las filas de las tablas núcleo del esquema
-(ver docs/modelo_datos_y_limpieza.md). Por ahora son contenedores de datos;
-a medida que se implementen los casos de uso (RF01-RF05) van a ir sumando
-comportamiento propio (validaciones, cálculo de punto de reorden, etc.).
-"""
 from dataclasses import dataclass
 from typing import Optional
 
@@ -34,12 +28,15 @@ class Categoria:
 
 @dataclass
 class Repuesto:
+    """Un producto de una categoría y una marca. Se identifica por
+    (marca_id, codigo): el código es el del fabricante, tal como viene."""
+
     id: Optional[int]
-    descripcion_normalizada: str
-    marca_id: Optional[int] = None
-    categoria_id: Optional[int] = None
+    codigo: str
+    marca_id: int
+    categoria_id: int
     especificaciones: Optional[str] = None
-    unidad_medida: str = "unidad"
+    unidad_medida: str = "unidad"  # "unidad" | "cm"
     stock_minimo: float = 0.0
     stock_maximo: Optional[float] = None
     punto_reorden: Optional[float] = None
@@ -55,9 +52,9 @@ class MovimientoStock:
 
     id: Optional[int]
     repuesto_id: int
-    fecha: str  # formato ISO yyyy-mm-dd
-    tipo: str  # "INGRESO" | "EGRESO" | "AJUSTE"
+    fecha: str  
+    tipo: str  
     cantidad: float
-    proveedor_id: Optional[int] = None  # solo tiene sentido en INGRESO
+    proveedor_id: Optional[int] = None  
     codigo_proveedor_raw: Optional[str] = None
-    origen: str = "manual"  # "carga_inicial" | "manual"
+    origen: str = "manual"  

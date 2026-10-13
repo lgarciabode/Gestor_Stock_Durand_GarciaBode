@@ -30,32 +30,28 @@ def _obtener_o_crear(conexion: sqlite3.Connection, tabla: str, columna: str, val
     return cursor.lastrowid
  
  
-def _obtener_o_crear_repuesto(conexion: sqlite3.Connection, proveedor_id: int, linea) -> int:
-    """Resuelve la identidad del repuesto por (proveedor, código de
-    proveedor): es la clave de `repuesto_codigo_proveedor`. Si ya existe esa
-    combinación, reutiliza el repuesto; si no, crea el repuesto y su mapeo.
+def _obtener_o_crear_repuesto(conexion: sqlite3.Connection, linea) -> int:
+    """Resuelve la identidad del repuesto por (marca, código): el código es
+    el del fabricante y no depende de quién lo vende, así que el mismo
+    repuesto comprado a dos proveedores queda como UN solo repuesto.
+    Si ya existe esa combinación, lo reutiliza; si no, lo crea con su
+    categoría (ya unificada por el parser) y sus especificaciones.
     """
+    marca_id = _obtener_o_crear(conexion, "marcas", "nombre", linea.marca)
     fila = conexion.execute(
-        """SELECT repuesto_id FROM repuesto_codigo_proveedor
-           WHERE proveedor_id = ? AND codigo_proveedor = ?""",
-        (proveedor_id, linea.codigo_proveedor),
+        "SELECT id FROM repuestos WHERE marca_id = ? AND codigo = ?",
+        (marca_id, linea.codigo),
     ).fetchone()
     if fila:
         return fila[0]
- 
-    marca_id = _obtener_o_crear(conexion, "marcas", "nombre", linea.marca)
+
+    categoria_id = _obtener_o_crear(conexion, "categorias", "nombre", linea.categoria)
     cursor = conexion.execute(
-        "INSERT INTO repuestos (descripcion_normalizada, marca_id) VALUES (?, ?)",
-        (linea.descripcion, marca_id),
-    )
-    repuesto_id = cursor.lastrowid
-    conexion.execute(
-        """INSERT INTO repuesto_codigo_proveedor
-           (repuesto_id, proveedor_id, codigo_proveedor, codigo_interno_taller)
+        """INSERT INTO repuestos (codigo, marca_id, categoria_id, especificaciones)
            VALUES (?, ?, ?, ?)""",
-        (repuesto_id, proveedor_id, linea.codigo_proveedor, linea.codigo_interno_taller),
+        (linea.codigo, marca_id, categoria_id, linea.especificaciones),
     )
-    return repuesto_id
+    return cursor.lastrowid
  
  
 def cargar_historico(conexion: sqlite3.Connection, ruta_excel: str) -> None:
@@ -73,7 +69,7 @@ def cargar_historico(conexion: sqlite3.Connection, ruta_excel: str) -> None:
     total_cargo_excluido = 0
  
     for valores in hoja.iter_rows(min_row=2, values_only=True):
-        if valores[0] is None:  # fila vacía (puede quedar al final de la hoja)
+        if valores[0] is None:  
             continue
         fila = dict(zip(ENCABEZADOS, valores))
  
@@ -81,24 +77,18 @@ def cargar_historico(conexion: sqlite3.Connection, ruta_excel: str) -> None:
         linea = parser.parsear(fila)
  
         if linea.tipo_linea != "PRODUCTO":
-            # Cargos administrativos (flete, seguro): no son stock, no se
-            # guardan. El Excel original en data/ queda como registro por
-            # si hace falta auditarlos más adelante.
             total_cargo_excluido += 1
             continue
  
         proveedor_id = _obtener_o_crear(conexion, "proveedores", "nombre", linea.proveedor)
-        repuesto_id = _obtener_o_crear_repuesto(conexion, proveedor_id, linea)
+        repuesto_id = _obtener_o_crear_repuesto(conexion, linea)
         fecha = _fecha_iso(fila["Fecha"])
  
-        # stock_actual se actualiza solo, vía el trigger
-        # trg_movimientos_actualiza_stock (ver modules/base_datos.py): no
-        # hace falta (ni conviene) tocarlo a mano acá.
         conexion.execute(
             """INSERT INTO movimientos_stock
                (repuesto_id, proveedor_id, fecha, tipo, cantidad, codigo_proveedor_raw, origen)
                VALUES (?, ?, ?, 'INGRESO', ?, ?, 'carga_inicial')""",
-            (repuesto_id, proveedor_id, fecha, linea.cantidad, linea.codigo_proveedor),
+            (repuesto_id, proveedor_id, fecha, linea.cantidad, linea.codigo),
         )
         total_producto += 1
  

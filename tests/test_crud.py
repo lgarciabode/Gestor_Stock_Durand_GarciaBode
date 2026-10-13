@@ -1,13 +1,4 @@
-"""Pruebas unitarias de GestorInventarioBD (modules/crud.py).
 
-Usan unicamente unittest (biblioteca estandar de Python: TestCase, metodos
-assert*), sin fixtures de pytest ni monkeypatch. Cada test sigue el patron
-AAA (Arrange, Act, Assert) que recomienda el apunte de la catedra: arma su
-propia base SQLite temporal en setUp (Arrange comun a todos), ejecuta un
-unico metodo del SUT (Act) y verifica el resultado (Assert). tearDown
-descarta la base, para que los tests sean independientes entre si y no
-dependan de un orden de ejecucion.
-"""
 import sys
 import tempfile
 import unittest
@@ -17,7 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from modules.base_datos import crear_esquema, obtener_conexion
 from modules.crud import GestorInventarioBD
-from modules.modelos import MovimientoStock, Proveedor, Repuesto
+import sqlite3
+
+from modules.modelos import Categoria, Marca, MovimientoStock, Proveedor, Repuesto
 
 
 class PruebaGestorInventarioBD(unittest.TestCase):
@@ -29,6 +22,9 @@ class PruebaGestorInventarioBD(unittest.TestCase):
         self.conexion = obtener_conexion(ruta_bd)
         crear_esquema(self.conexion)
         self.gestor = GestorInventarioBD(self.conexion)
+        # Todo repuesto necesita una marca y una categoria (NOT NULL)
+        self.marca_id = self.gestor.crear_marca(Marca(id=None, nombre="ZKL"))
+        self.categoria_id = self.gestor.crear_categoria(Categoria(id=None, nombre="RODAMIENTO"))
 
     def tearDown(self):
         self.conexion.close()
@@ -100,7 +96,7 @@ class PruebaGestorInventarioBD(unittest.TestCase):
 
     def test_crear_repuesto_retorna_id_y_persiste(self):
         # Arrange
-        repuesto = Repuesto(id=None, descripcion_normalizada="RODAMIENTO", stock_actual=5.0)
+        repuesto = Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="RODAMIENTO", stock_actual=5.0)
 
         # Act
         repuesto_id = self.gestor.crear_repuestos(repuesto)
@@ -108,13 +104,13 @@ class PruebaGestorInventarioBD(unittest.TestCase):
         # Assert
         self.assertIsInstance(repuesto_id, int)
         guardado = self.gestor.obtener_repuesto_id(repuesto_id)
-        self.assertEqual(guardado.descripcion_normalizada, "RODAMIENTO")
+        self.assertEqual(guardado.codigo, "RODAMIENTO")
         self.assertEqual(guardado.stock_actual, 5.0)
 
     def test_obtener_repuestos_filtra_por_activo(self):
         # Arrange
-        id_activo = self.gestor.crear_repuestos(Repuesto(id=None, descripcion_normalizada="A"))
-        id_inactivo = self.gestor.crear_repuestos(Repuesto(id=None, descripcion_normalizada="B"))
+        id_activo = self.gestor.crear_repuestos(Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="A"))
+        id_inactivo = self.gestor.crear_repuestos(Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="B"))
         repuesto_inactivo = self.gestor.obtener_repuesto_id(id_inactivo)
         repuesto_inactivo.activo = False
         self.gestor.actualizar_repuesto(repuesto_inactivo)
@@ -130,7 +126,7 @@ class PruebaGestorInventarioBD(unittest.TestCase):
 
     def test_obtener_repuesto_id_existente_y_inexistente(self):
         # Arrange
-        repuesto_id = self.gestor.crear_repuestos(Repuesto(id=None, descripcion_normalizada="TUBO"))
+        repuesto_id = self.gestor.crear_repuestos(Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="TUBO"))
 
         # Act
         encontrado = self.gestor.obtener_repuesto_id(repuesto_id)
@@ -144,21 +140,21 @@ class PruebaGestorInventarioBD(unittest.TestCase):
         """Regresion del bug: al UPDATE le faltaba WHERE id = ?, lo que
         hubiera modificado todas las filas de la tabla."""
         # Arrange
-        id_uno = self.gestor.crear_repuestos(Repuesto(id=None, descripcion_normalizada="Original A"))
-        id_dos = self.gestor.crear_repuestos(Repuesto(id=None, descripcion_normalizada="Original B"))
+        id_uno = self.gestor.crear_repuestos(Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="Original A"))
+        id_dos = self.gestor.crear_repuestos(Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="Original B"))
         repuesto_uno = self.gestor.obtener_repuesto_id(id_uno)
-        repuesto_uno.descripcion_normalizada = "Modificado A"
+        repuesto_uno.codigo = "Modificado A"
 
         # Act
         self.gestor.actualizar_repuesto(repuesto_uno)
 
         # Assert
-        self.assertEqual(self.gestor.obtener_repuesto_id(id_uno).descripcion_normalizada, "Modificado A")
-        self.assertEqual(self.gestor.obtener_repuesto_id(id_dos).descripcion_normalizada, "Original B")
+        self.assertEqual(self.gestor.obtener_repuesto_id(id_uno).codigo, "Modificado A")
+        self.assertEqual(self.gestor.obtener_repuesto_id(id_dos).codigo, "Original B")
 
     def test_actualizar_parametros_stock(self):
         # Arrange
-        repuesto_id = self.gestor.crear_repuestos(Repuesto(id=None, descripcion_normalizada="C"))
+        repuesto_id = self.gestor.crear_repuestos(Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="C"))
 
         # Act
         self.gestor.actualizar_parametros_stock(
@@ -174,10 +170,10 @@ class PruebaGestorInventarioBD(unittest.TestCase):
     def test_obtener_repuestos_bajo_reorden(self):
         # Arrange
         id_bajo = self.gestor.crear_repuestos(
-            Repuesto(id=None, descripcion_normalizada="Bajo stock", stock_actual=1.0, punto_reorden=3.0)
+            Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="Bajo stock", stock_actual=1.0, punto_reorden=3.0)
         )
         self.gestor.crear_repuestos(
-            Repuesto(id=None, descripcion_normalizada="Stock ok", stock_actual=10.0, punto_reorden=3.0)
+            Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="Stock ok", stock_actual=10.0, punto_reorden=3.0)
         )
 
         # Act
@@ -187,12 +183,72 @@ class PruebaGestorInventarioBD(unittest.TestCase):
         self.assertEqual(len(bajo_reorden), 1)
         self.assertEqual(bajo_reorden[0].id, id_bajo)
 
+    # --- Marcas y categorias ---------------------------------------------
+
+    def test_crear_y_obtener_categorias(self):
+        # Act
+        self.gestor.crear_categoria(Categoria(id=None, nombre="HORQUILLA"))
+
+        # Assert (la de setUp + la nueva, ordenadas por nombre)
+        nombres = [c.nombre for c in self.gestor.obtener_categorias()]
+        self.assertEqual(nombres, ["HORQUILLA", "RODAMIENTO"])
+
+    def test_crear_categoria_repetida_falla(self):
+        # Act / Assert: la lista es cerrada, no puede haber dos con el mismo nombre
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.gestor.crear_categoria(Categoria(id=None, nombre="RODAMIENTO"))
+
+    # --- Identidad del repuesto (marca + codigo) ---------------------------
+
+    def test_no_permite_repetir_marca_y_codigo(self):
+        # Arrange
+        self.gestor.crear_repuestos(
+            Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="6204 2RS")
+        )
+
+        # Act / Assert
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.gestor.crear_repuestos(
+                Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="6204 2RS")
+            )
+
+    def test_mismo_codigo_de_otra_marca_es_otro_repuesto(self):
+        # Arrange
+        otra_marca_id = self.gestor.crear_marca(Marca(id=None, nombre="GKL"))
+
+        # Act
+        id_zkl = self.gestor.crear_repuestos(
+            Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="UC 207")
+        )
+        id_gkl = self.gestor.crear_repuestos(
+            Repuesto(id=None, marca_id=otra_marca_id, categoria_id=self.categoria_id, codigo="UC 207")
+        )
+
+        # Assert
+        self.assertNotEqual(id_zkl, id_gkl)
+        self.assertEqual(self.gestor.obtener_repuesto_por_codigo(otra_marca_id, "UC 207").id, id_gkl)
+
+    def test_unidad_de_medida_solo_unidad_o_cm(self):
+        # Arrange
+        en_cm = Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id,
+                         codigo="CADENA-1", unidad_medida="cm")
+        en_kg = Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id,
+                         codigo="CADENA-2", unidad_medida="kg")
+
+        # Act
+        id_cm = self.gestor.crear_repuestos(en_cm)
+
+        # Assert
+        self.assertEqual(self.gestor.obtener_repuesto_id(id_cm).unidad_medida, "cm")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.gestor.crear_repuestos(en_kg)
+
     # --- Movimientos de stock --------------------------------------------
 
     def test_registrar_movimiento_actualiza_stock_via_trigger(self):
         # Arrange
         repuesto_id = self.gestor.crear_repuestos(
-            Repuesto(id=None, descripcion_normalizada="Rodamiento 6205", stock_actual=0.0)
+            Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="Rodamiento 6205", stock_actual=0.0)
         )
 
         # Act
