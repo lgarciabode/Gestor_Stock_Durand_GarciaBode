@@ -3,7 +3,7 @@ Encapsula las operaciones de persistencia (alta, lectura, modificacion y baja) s
 
 import sqlite3
 from typing import List, Optional
-from modules.modelos import Categoria, Marca, MovimientoStock, Proveedor, Repuesto, validar_umbrales
+from modules.modelos import Alerta, Categoria, Marca, MovimientoStock, Proveedor, Repuesto, validar_umbrales
 
 def _fila_a_repuesto(f: sqlite3.Row) -> Repuesto:
     """Convierte una fila de la tabla repuestos en un objeto Repuesto."""
@@ -246,3 +246,92 @@ class GestorInventarioBD:
         if fila[0] is None:
             return None
         return fila[0], fila[1]
+
+
+# ================================================================ ALERTAS
+
+class AlertaNoEncontradaError(LookupError):
+    """La alerta no existe o ya estaba atendida."""
+
+
+class AlertaDuplicadaError(ValueError):
+    """Ya hay una alerta abierta del mismo tipo para ese repuesto."""
+
+
+# Orden en que se listan las alertas abiertas: lo mas urgente primero.
+_PRIORIDAD_TIPO = "CASE a.tipo WHEN 'CRITICO' THEN 0 WHEN 'REORDEN' THEN 1 ELSE 2 END"
+
+
+def _fila_a_alerta(f: sqlite3.Row) -> Alerta:
+    return Alerta(
+        id=f["id"],
+        repuesto_id=f["repuesto_id"],
+        fecha=f["fecha"],
+        tipo=f["tipo"],
+        mensaje=f["mensaje"],
+        atendida=bool(f["atendida"]),
+    )
+
+
+class RepositorioAlertas:
+    """Guarda y consulta alertas en la tabla `alertas` (capa de persistencia).
+
+    Responsabilidad unica: solo habla con la base. Que alerta corresponde la
+    decide MotorAlertas (modules/alertas.py).
+
+    Invariante (lo garantiza la base con el indice unico parcial
+    idx_alertas_abierta_unica): nunca dos alertas abiertas del mismo tipo para
+    el mismo repuesto. Las alertas no se borran: al atenderlas quedan como historial.
+    """
+
+    def __init__(self, conexion: sqlite3.Connection):
+        self.conexion = conexion
+
+    def crear(self, alerta: Alerta) -> int:
+        """Guarda una alerta nueva y devuelve su id.
+        Si ya hay una abierta del mismo tipo para ese repuesto, lanza AlertaDuplicadaError."""
+        try:
+            cursor = self.conexion.execute(
+                "INSERT INTO alertas (repuesto_id, fecha, tipo, mensaje, atendida) VALUES (?, ?, ?, ?, ?)",
+                (alerta.repuesto_id, alerta.fecha, alerta.tipo, alerta.mensaje, int(alerta.atendida)),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise AlertaDuplicadaError(
+                f"Ya hay una alerta {alerta.tipo} abierta para el repuesto {alerta.repuesto_id}."
+            ) from exc
+        self.conexion.commit()
+        return cursor.lastrowid
+
+    def existe_abierta(self, repuesto_id: int, tipo: str) -> bool:
+        fila = self.conexion.execute(
+            "SELECT 1 FROM alertas WHERE repuesto_id = ? AND tipo = ? AND atendida = 0",
+            (repuesto_id, tipo),
+        ).fetchone()
+        return fila is not None
+
+    def obtener_abiertas(self, incluir_inactivos: bool = False) -> List[Alerta]:
+        """Alertas sin atender, lo mas urgente primero (CRITICO, REORDEN, SOBRESTOCK).
+        Por defecto oculta las de repuestos inactivos: no se modifican, solo no se muestran."""
+        query = f"""SELECT a.* FROM alertas a JOIN repuestos r ON r.id = a.repuesto_id
+                    WHERE a.atendida = 0 {"" if incluir_inactivos else "AND r.activo = 1"}
+                    ORDER BY {_PRIORIDAD_TIPO}, a.fecha, a.id"""
+        return [_fila_a_alerta(f) for f in self.conexion.execute(query).fetchall()]
+
+    def obtener_historial(self, repuesto_id: int) -> List[Alerta]:
+        """Todas las alertas de un repuesto (abiertas y atendidas), de la mas nueva a la mas vieja."""
+        filas = self.conexion.execute(
+            "SELECT * FROM alertas WHERE repuesto_id = ? ORDER BY fecha DESC, id DESC", (repuesto_id,)
+        ).fetchall()
+        return [_fila_a_alerta(f) for f in filas]
+
+    def marcar_atendida(self, alerta_id: int) -> None:
+        """Cierra una alerta ("Ya lo pedi").
+        Pre: la alerta existe y esta abierta; si no, AlertaNoEncontradaError.
+        Post: atendida = 1."""
+        cursor = self.conexion.execute(
+            "UPDATE alertas SET atendida = 1 WHERE id = ? AND atendida = 0", (alerta_id,)
+        )
+        if cursor.rowcount == 0:
+            self.conexion.rollback()
+            raise AlertaNoEncontradaError(f"No hay una alerta abierta con id {alerta_id}.")
+        self.conexion.commit()

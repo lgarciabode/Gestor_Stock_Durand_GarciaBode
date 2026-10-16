@@ -1,39 +1,13 @@
-"""Módulo de alertas de stock.
-
-Diseño completo en `docs/modulo_alertas.md` y en el diagrama de clases
-(`docs/diagrama_UML.md`, sección 2). Este archivo se construye por pasos:
-
-- Paso 3: cálculo de umbrales a partir de la demanda.
-    EstimadorDemanda (abstracta)  ->  EstimadorPorCompras
-    CalculadoraParametros         ->  usa un EstimadorDemanda (patrón Strategy)
-- Paso 4: ServicioParametrosStock (recalcula y guarda en la base).
-- Paso 5: reglas de alerta, MotorAlertas y RepositorioAlertas.
-
-Teoría aplicada (carpeta Teoría):
-- Clases abstractas con `abc` y polimorfismo (Unidad 2).
-- Patrón Strategy, Abierto/Cerrado e Inversión de dependencias (Unidad 3):
-  la calculadora depende de la abstracción EstimadorDemanda, no de cómo se
-  estima. Hoy se estima con compras; cuando haya egresos se agrega
-  EstimadorPorEgresos sin tocar la calculadora.
-- Diseño por contratos y excepciones propias (Unidades 3 y 4).
-
-Fundamento de las fórmulas: Silver, Pyke y Thomas (2017), "Inventory and
-Production Management in Supply Chains", 4.ª ed., CRC Press (punto de
-reorden y stock de seguridad en sistemas de revisión continua).
-"""
 import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date
-from typing import List, Optional
+from typing import Callable, List, Optional
 
-from modules.modelos import EstadoStock, MovimientoStock, Repuesto
+from modules.modelos import Alerta, EstadoStock, MovimientoStock, Repuesto
 
 
 # ---------------------------------------------------------------- Palabras para la interfaz
-# En el código se usan los términos técnicos; en la pantalla, palabras del
-# taller. Están en UN solo lugar para que la interfaz y los mensajes de las
-# alertas digan siempre lo mismo. Para cambiar una frase, se cambia acá.
 
 ETIQUETAS_UMBRALES = {
     "punto_reorden": "Pedir cuando queden",
@@ -250,3 +224,140 @@ class ServicioParametrosStock:
             if self.recalcular(repuesto) is not None:
                 actualizados += 1
         return actualizados
+
+
+# ---------------------------------------------------------------- qué condición dispara cada alerta
+
+def _cantidad(repuesto: Repuesto, valor: float) -> str:
+    """Formatea una cantidad con su unidad: "3 unidades", "1 unidad", "120 cm", "3,05 cm"."""
+    numero = f"{valor:g}".replace(".", ",")
+    if repuesto.unidad_medida == "cm":
+        return f"{numero} cm"
+    return f"{numero} unidad" if valor == 1 else f"{numero} unidades"
+
+
+class ReglaAlerta(ABC):
+    """Contrato común a todas las reglas (Liskov: todas se usan igual).
+
+    evaluar(repuesto) -> bool: True si corresponde la alerta. No modifica el repuesto.
+    mensaje(repuesto) -> str:  texto para el usuario, con palabras del taller.
+    """
+
+    tipo: str = ""
+
+    @abstractmethod
+    def evaluar(self, repuesto: Repuesto) -> bool:
+        ...
+
+    @abstractmethod
+    def mensaje(self, repuesto: Repuesto) -> str:
+        ...
+
+
+class ReglaReorden(ReglaAlerta):
+    """Hay que pedir: el stock llegó al punto de reorden, pero todavía no al mínimo.
+    (Debajo del mínimo corresponde CRITICO, para no avisar dos veces lo mismo.)"""
+
+    tipo = "REORDEN"
+
+    def evaluar(self, repuesto: Repuesto) -> bool:
+        return repuesto.necesita_reabastecimiento() and not repuesto.esta_en_estado_critico()
+
+    def mensaje(self, repuesto: Repuesto) -> str:
+        return (
+            f"{ETIQUETAS_TIPO_ALERTA[self.tipo]} — {repuesto.codigo}: "
+            f"quedan {_cantidad(repuesto, repuesto.stock_actual)} "
+            f"({ETIQUETAS_UMBRALES['punto_reorden'].lower()} {_cantidad(repuesto, repuesto.punto_reorden)}). "
+            f"Sugerencia: pedir {_cantidad(repuesto, repuesto.calcular_sugerencia_compra())}."
+        )
+
+
+class ReglaCritico(ReglaAlerta):
+    """Urgente: el stock llegó al mínimo de seguridad (o se agotó)."""
+
+    tipo = "CRITICO"
+
+    def evaluar(self, repuesto: Repuesto) -> bool:
+        return repuesto.esta_en_estado_critico()
+
+    def mensaje(self, repuesto: Repuesto) -> str:
+        sugerencia = f"Sugerencia: pedir {_cantidad(repuesto, repuesto.calcular_sugerencia_compra())}."
+        if repuesto.esta_agotado():
+            return f"{ETIQUETAS_ESTADO[EstadoStock.AGOTADO]} — {repuesto.codigo}: no queda stock. {sugerencia}"
+        return (
+            f"{ETIQUETAS_TIPO_ALERTA[self.tipo]} — {repuesto.codigo}: "
+            f"quedan {_cantidad(repuesto, repuesto.stock_actual)} "
+            f"({ETIQUETAS_UMBRALES['stock_minimo'].lower()}: {_cantidad(repuesto, repuesto.stock_minimo)}). "
+            f"{sugerencia}"
+        )
+
+
+class ReglaSobrestock(ReglaAlerta):
+    """Sobra stock: hay más que el máximo (dinero inmovilizado)."""
+
+    tipo = "SOBRESTOCK"
+
+    def evaluar(self, repuesto: Repuesto) -> bool:
+        return repuesto.tiene_sobrestock()
+
+    def mensaje(self, repuesto: Repuesto) -> str:
+        return (
+            f"{ETIQUETAS_TIPO_ALERTA[self.tipo]} — {repuesto.codigo}: "
+            f"hay {_cantidad(repuesto, repuesto.stock_actual)} "
+            f"({ETIQUETAS_UMBRALES['stock_maximo'].lower()} {_cantidad(repuesto, repuesto.stock_maximo)}). "
+            f"No hace falta comprar."
+        )
+
+
+# ---------------------------------------------------------------- Motor de alertas
+
+class MotorAlertas:
+    """Aplica las reglas a un repuesto y crea las alertas que correspondan.
+
+    Depende de la abstracción ReglaAlerta (no sabe qué reglas hay) y de un
+    repositorio con los métodos existe_abierta(repuesto_id, tipo) y crear(alerta).
+    Las reglas se crean afuera y se le pasan (agregación). Para sumar una
+    alerta nueva (ej. SIN_ROTACION) alcanza con pasarle otra regla (Abierto/Cerrado).
+
+    Contrato de revisar(repuesto):
+      - Repuesto inactivo o sin umbrales -> [] (no se revisa).
+      - Por cada regla que se cumple queda exactamente UNA alerta abierta de ese
+        tipo: si ya había una, no se crea otra.
+      - Devuelve solo las alertas NUEVAS.
+
+    Uso típico, después de registrar un movimiento:
+        gestor.registrar_movimiento(mov)
+        motor.revisar(gestor.obtener_repuesto_id(mov.repuesto_id))
+    """
+
+    def __init__(self, reglas: List[ReglaAlerta], repositorio,
+                 hoy: Callable[[], str] = lambda: date.today().isoformat()):
+        if not reglas:
+            raise ValueError("El motor necesita al menos una regla.")
+        self._reglas = list(reglas)
+        self._repositorio = repositorio
+        self._hoy = hoy  # se puede reemplazar en las pruebas para tener una fecha fija
+
+    def revisar(self, repuesto: Repuesto) -> List[Alerta]:
+        if not repuesto.activo or not repuesto.tiene_umbrales():
+            return []
+        nuevas = []
+        for regla in self._reglas:
+            if regla.evaluar(repuesto) and not self._repositorio.existe_abierta(repuesto.id, regla.tipo):
+                alerta = Alerta(id=None, repuesto_id=repuesto.id, fecha=self._hoy(),
+                                tipo=regla.tipo, mensaje=regla.mensaje(repuesto))
+                alerta.id = self._repositorio.crear(alerta)
+                nuevas.append(alerta)
+        return nuevas
+
+    def revisar_todos(self, repuestos: List[Repuesto]) -> List[Alerta]:
+        """Botón "revisar todo": revisa cada repuesto y devuelve todas las alertas nuevas."""
+        nuevas = []
+        for repuesto in repuestos:
+            nuevas.extend(self.revisar(repuesto))
+        return nuevas
+
+
+def reglas_por_defecto() -> List[ReglaAlerta]:
+    """Las tres reglas acordadas, de la más urgente a la menos urgente."""
+    return [ReglaCritico(), ReglaReorden(), ReglaSobrestock()]

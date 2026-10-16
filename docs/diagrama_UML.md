@@ -111,7 +111,8 @@ classDiagram
         -Connection conexion
         +crear(alerta: Alerta) int
         +existe_abierta(repuesto_id: int, tipo: str) bool
-        +obtener_abiertas() List~Alerta~
+        +obtener_abiertas(incluir_inactivos: bool) List~Alerta~
+        +obtener_historial(repuesto_id: int) List~Alerta~
         +marcar_atendida(alerta_id: int) None
     }
 
@@ -230,6 +231,7 @@ classDiagram
     class MotorAlertas {
         -List~ReglaAlerta~ reglas
         -RepositorioAlertas repositorio
+        -Callable hoy
         +revisar(repuesto: Repuesto) List~Alerta~
         +revisar_todos(repuestos: List~Repuesto~) List~Alerta~
     }

@@ -115,7 +115,8 @@ package "Capa de Persistencia (modules/crud.py)" {
         -conexion: Connection
         +crear(alerta: Alerta): int
         +existe_abierta(repuesto_id: int, tipo: str): bool
-        +obtener_abiertas(): List<Alerta>
+        +obtener_abiertas(incluir_inactivos: bool = False): List<Alerta>
+        +obtener_historial(repuesto_id: int): List<Alerta>
         +marcar_atendida(alerta_id: int): None
     }
 }
@@ -219,6 +220,7 @@ package "Módulo de alertas (modules/alertas.py) — diseño" {
     class MotorAlertas {
         -reglas: List<ReglaAlerta>
         -repositorio: RepositorioAlertas
+        -hoy: Callable[[], str]
         +revisar(repuesto: Repuesto): List<Alerta>
         +revisar_todos(repuestos: List<Repuesto>): List<Alerta>
     }
