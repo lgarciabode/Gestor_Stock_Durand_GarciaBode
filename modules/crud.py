@@ -219,3 +219,30 @@ class GestorInventarioBD:
         )
         self.conexion.commit()
         return cursor.lastrowid
+
+    def obtener_movimientos(self, repuesto_id: int) -> List[MovimientoStock]:
+        """Todos los movimientos de un repuesto, del mas viejo al mas nuevo.
+        Es la entrada del calculo de umbrales (modules/alertas.py)."""
+        filas = self.conexion.execute(
+            "SELECT * FROM movimientos_stock WHERE repuesto_id = ? ORDER BY fecha, id", (repuesto_id,)
+        ).fetchall()
+        return [
+            MovimientoStock(
+                id=f["id"],
+                repuesto_id=f["repuesto_id"],
+                fecha=f["fecha"],
+                tipo=f["tipo"],
+                cantidad=f["cantidad"],
+                proveedor_id=f["proveedor_id"],
+                codigo_proveedor_raw=f["codigo_proveedor_raw"],
+                origen=f["origen"],
+            )
+            for f in filas
+        ]
+
+    def obtener_periodo_movimientos(self) -> Optional[tuple]:
+        """Fecha del primer y del ultimo movimiento registrado (texto ISO), o None si no hay."""
+        fila = self.conexion.execute("SELECT MIN(fecha), MAX(fecha) FROM movimientos_stock").fetchone()
+        if fila[0] is None:
+            return None
+        return fila[0], fila[1]

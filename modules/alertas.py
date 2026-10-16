@@ -1,13 +1,39 @@
+"""Módulo de alertas de stock.
 
+Diseño completo en `docs/modulo_alertas.md` y en el diagrama de clases
+(`docs/diagrama_UML.md`, sección 2). Este archivo se construye por pasos:
+
+- Paso 3: cálculo de umbrales a partir de la demanda.
+    EstimadorDemanda (abstracta)  ->  EstimadorPorCompras
+    CalculadoraParametros         ->  usa un EstimadorDemanda (patrón Strategy)
+- Paso 4: ServicioParametrosStock (recalcula y guarda en la base).
+- Paso 5: reglas de alerta, MotorAlertas y RepositorioAlertas.
+
+Teoría aplicada (carpeta Teoría):
+- Clases abstractas con `abc` y polimorfismo (Unidad 2).
+- Patrón Strategy, Abierto/Cerrado e Inversión de dependencias (Unidad 3):
+  la calculadora depende de la abstracción EstimadorDemanda, no de cómo se
+  estima. Hoy se estima con compras; cuando haya egresos se agrega
+  EstimadorPorEgresos sin tocar la calculadora.
+- Diseño por contratos y excepciones propias (Unidades 3 y 4).
+
+Fundamento de las fórmulas: Silver, Pyke y Thomas (2017), "Inventory and
+Production Management in Supply Chains", 4.ª ed., CRC Press (punto de
+reorden y stock de seguridad en sistemas de revisión continua).
+"""
 import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import date
 from typing import List, Optional
 
-from modules.modelos import EstadoStock, MovimientoStock
+from modules.modelos import EstadoStock, MovimientoStock, Repuesto
 
 
 # ---------------------------------------------------------------- Palabras para la interfaz
+# En el código se usan los términos técnicos; en la pantalla, palabras del
+# taller. Están en UN solo lugar para que la interfaz y los mensajes de las
+# alertas digan siempre lo mismo. Para cambiar una frase, se cambia acá.
 
 ETIQUETAS_UMBRALES = {
     "punto_reorden": "Pedir cuando queden",
@@ -40,7 +66,7 @@ class ParametrosInvalidosError(ValueError):
     """Los días de reposición o de seguridad no tienen sentido (L <= 0 o S < 0)."""
 
 
-# ---------------------------------------------------------------- Resultados 
+# ---------------------------------------------------------------- Resultados (objetos de valor)
 
 @dataclass(frozen=True)
 class EstimacionDemanda:
@@ -57,7 +83,7 @@ class ParametrosStock:
     stock_maximo: float
 
 
-# ---------------------------------------------------------------- cómo se estima la demanda
+# ---------------------------------------------------------------- Strategy: cómo se estima la demanda
 
 class EstimadorDemanda(ABC):
     """Contrato común a todas las formas de estimar la demanda.
@@ -167,3 +193,60 @@ class CalculadoraParametros:
             punto_reorden=_redondear_hacia_arriba(reorden),
             stock_maximo=_redondear_hacia_arriba(maximo),
         )
+
+
+# ---------------------------------------------------------------- Guardado de umbrales
+
+def dias_entre(fecha_desde: str, fecha_hasta: str) -> int:
+    """Días entre dos fechas ISO (yyyy-mm-dd); como mínimo 1, para no dividir por cero."""
+    return max(1, (date.fromisoformat(fecha_hasta) - date.fromisoformat(fecha_desde)).days)
+
+
+class ServicioParametrosStock:
+    """Recalcula los umbrales de los repuestos y los guarda en la base.
+
+    Responsabilidad única: coordinar. El cálculo lo hace la CalculadoraParametros
+    (que no conoce la base) y el guardado lo hace GestorInventarioBD.
+
+    Contrato de recalcular(repuesto):
+      - Si el repuesto está inactivo o sus umbrales se corrigieron a mano
+        (parametros_manuales), NO cambia nada y devuelve None.
+      - Si no hay datos para calcular (sin compras), NO cambia nada y devuelve None.
+      - Si no, guarda los umbrales calculados (marcados como automáticos) y los devuelve.
+    """
+
+    def __init__(self, gestor, calculadora: CalculadoraParametros):
+        self._gestor = gestor
+        self._calculadora = calculadora
+
+    @classmethod
+    def desde_historial(cls, gestor, dias_reposicion: int = 7, dias_seguridad: int = 7) -> "ServicioParametrosStock":
+        """Arma el servicio con el estimador por compras y el período real de los datos
+        (del primer al último movimiento registrado)."""
+        periodo = gestor.obtener_periodo_movimientos()
+        dias = dias_entre(*periodo) if periodo else 1
+        calculadora = CalculadoraParametros(EstimadorPorCompras(dias), dias_reposicion, dias_seguridad)
+        return cls(gestor, calculadora)
+
+    def recalcular(self, repuesto: Repuesto) -> Optional[ParametrosStock]:
+        if not repuesto.activo or repuesto.parametros_manuales:
+            return None
+        parametros = self._calculadora.calcular(self._gestor.obtener_movimientos(repuesto.id))
+        if parametros is None:
+            return None
+        self._gestor.actualizar_parametros_stock(
+            repuesto.id,
+            stock_minimo=parametros.stock_minimo,
+            stock_maximo=parametros.stock_maximo,
+            punto_reorden=parametros.punto_reorden,
+            manual=False,
+        )
+        return parametros
+
+    def recalcular_todos(self) -> int:
+        """Recalcula todos los repuestos activos. Devuelve cuántos se actualizaron."""
+        actualizados = 0
+        for repuesto in self._gestor.obtener_repuestos(solo_activos=True):
+            if self.recalcular(repuesto) is not None:
+                actualizados += 1
+        return actualizados
