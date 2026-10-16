@@ -1,8 +1,16 @@
 # 📐 Diagrama de Clases UML — Gestor de Inventario
 
+> Actualizado el 15/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada` y diseño del **módulo de alertas**.
+> La misma información está en `diagramaUML.puml` (PlantUML) y en la imagen `Diagrama_Clases_Gestor_Stock.png`.
+
+**Notación** (Unidades 2 y 3 de POO): `+` público, `-` privado, `*` método abstracto, `<<abstract>>` clase abstracta (ABC).
+Relaciones: `<|--` herencia ("es un"), `o--` agregación ("tiene un", la parte existe por fuera), `-->` asociación ("usa un"), `..>` dependencia ("depende de").
+
+## 1. Modelo de dominio, persistencia y parsers
+
 ```mermaid
 classDiagram
-    %% MODELO DE DOMINIO (ENTIDADES - dataclasses)
+    %% ===== MODELO DE DOMINIO (modules/modelos.py) =====
     class Proveedor {
         +Optional~int~ id
         +str nombre
@@ -26,9 +34,9 @@ classDiagram
 
     class Repuesto {
         +Optional~int~ id
-        +str descripcion_normalizada
-        +Optional~int~ marca_id
-        +Optional~int~ categoria_id
+        +str codigo
+        +int marca_id
+        +int categoria_id
         +Optional~str~ especificaciones
         +str unidad_medida
         +float stock_minimo
@@ -36,9 +44,25 @@ classDiagram
         +Optional~float~ punto_reorden
         +float stock_actual
         +bool activo
+        +bool parametros_manuales
+        +tiene_umbrales() bool
+        +esta_agotado() bool
         +necesita_reabastecimiento() bool
         +esta_en_estado_critico() bool
+        +tiene_sobrestock() bool
         +calcular_sugerencia_compra() float
+        +estado() EstadoStock
+    }
+
+    class EstadoStock {
+        <<enumeration>>
+        DISPONIBLE
+        HAY_QUE_PEDIR
+        URGENTE
+        AGOTADO
+        SOBRESTOCK
+        SIN_DATOS
+        INACTIVO
     }
 
     class MovimientoStock {
@@ -52,75 +76,182 @@ classDiagram
         +str origen
     }
 
-    class LineaComprobante {
+    class Alerta {
+        +Optional~int~ id
+        +int repuesto_id
         +str fecha
-        +str remito
-        +str proveedor
-        +str codigo_proveedor
-        +str marca
-        +str descripcion
-        +float cantidad
-        +str codigo_interno_taller
-        +str tipo_linea
+        +str tipo
+        +str mensaje
+        +bool atendida
     }
 
-    %% CAPA DE PERSISTENCIA (CRUD / GESTOR)
+    %% ===== PERSISTENCIA (modules/crud.py) =====
     class GestorInventarioBD {
         -Connection conexion
         +crear_proveedor(prov: Proveedor) int
         +obtener_proveedores(solo_activos: bool) List~Proveedor~
-        +actualizar_proveedor(prov: Proveedor) void
-        +desactivar_proveedor(proveedor_id: int) void
-        +crear_repuesto(rep: Repuesto) int
+        +actualizar_proveedor(prov: Proveedor) None
+        +desactivar_proveedor(proveedor_id: int) None
+        +crear_marca(marca: Marca) int
+        +obtener_marcas() List~Marca~
+        +crear_categoria(categoria: Categoria) int
+        +obtener_categorias() List~Categoria~
+        +crear_repuestos(rep: Repuesto) int
         +obtener_repuestos(solo_activos: bool) List~Repuesto~
-        +obtener_repuesto_por_id(repuesto_id: int) Optional~Repuesto~
-        +actualizar_repuesto(rep: Repuesto) void
-        +actualizar_parametros_stock(repuesto_id: int, stock_minimo: float, stock_maximo: float, punto_reorden: float) void
+        +obtener_repuesto_id(repuesto_id: int) Optional~Repuesto~
+        +obtener_repuesto_por_codigo(marca_id: int, codigo: str) Optional~Repuesto~
+        +actualizar_repuesto(rep: Repuesto) None
+        +actualizar_parametros_stock(repuesto_id, stock_minimo, stock_maximo, punto_reorden, manual: bool) None
         +obtener_repuestos_bajo_reorden() List~Repuesto~
         +registrar_movimiento(mov: MovimientoStock) int
+        +obtener_movimientos(repuesto_id: int) List~MovimientoStock~
     }
 
-    %% PATRÓN STRATEGY / FACTORY
+    class RepositorioAlertas {
+        -Connection conexion
+        +crear(alerta: Alerta) int
+        +existe_abierta(repuesto_id: int, tipo: str) bool
+        +obtener_abiertas() List~Alerta~
+        +marcar_atendida(alerta_id: int) None
+    }
+
+    %% ===== PARSERS: STRATEGY + FACTORY (modules/parsers.py) =====
+    class LineaNormalizada {
+        +str proveedor
+        +str codigo
+        +str marca
+        +Optional~str~ categoria
+        +Optional~str~ especificaciones
+        +str descripcion
+        +float cantidad
+        +str tipo_linea
+    }
+
     class ParserProveedor {
-        <<interface>>
-        +str nombre_proveedor*
-        +parsear(fila: dict)* LineaComprobante
+        <<abstract>>
+        +parsear(fila: dict)* LineaNormalizada
     }
-
     class ParserIriondo {
-        +str nombre_proveedor
-        +parsear(fila: dict) LineaComprobante
+        +parsear(fila: dict) LineaNormalizada
     }
-
     class ParserEdMa {
-        +str nombre_proveedor
-        +parsear(fila: dict) LineaComprobante
+        +parsear(fila: dict) LineaNormalizada
     }
-
     class ParserProdumat {
-        +str nombre_proveedor
-        +parsear(fila: dict) LineaComprobante
+        +parsear(fila: dict) LineaNormalizada
     }
-
     class FabricaParsers {
-        -dict~str, ParserProveedor~ _parsers
+        <<factory>>
+        -dict _PARSERS_POR_PROVEEDOR
         +obtener_parser(nombre_proveedor: str) ParserProveedor
     }
 
-    %% RELACIONES
-    Repuesto "0..*" --> "0..1" Marca : pertenece a
-    Repuesto "0..*" --> "0..1" Categoria : pertenece a
+    %% ===== RELACIONES =====
+    Repuesto "0..*" --> "1" Marca : pertenece a
+    Repuesto "0..*" --> "1" Categoria : pertenece a
     MovimientoStock "0..*" --> "1" Repuesto : impacta sobre
-    MovimientoStock "0..*" --> "0..1" Proveedor : provisto por
+    MovimientoStock "0..*" --> "0..1" Proveedor : comprado a
+    Alerta "0..*" --> "1" Repuesto : avisa sobre
+    Repuesto ..> EstadoStock : calcula
 
     GestorInventarioBD ..> Proveedor : manipula
     GestorInventarioBD ..> Repuesto : manipula
     GestorInventarioBD ..> MovimientoStock : registra
+    RepositorioAlertas ..> Alerta : guarda / lee
 
-    ParserProveedor <|.. ParserIriondo : implementa
-    ParserProveedor <|.. ParserEdMa : implementa
-    ParserProveedor <|.. ParserProdumat : implementa
-
-    FabricaParsers --> "1..*" ParserProveedor : instancia/retorna
-    ParserProveedor ..> LineaComprobante : crea
+    ParserProveedor <|-- ParserIriondo
+    ParserProveedor <|-- ParserEdMa
+    ParserProveedor <|-- ParserProdumat
+    FabricaParsers --> "1..*" ParserProveedor : retorna
+    ParserProveedor ..> LineaNormalizada : crea
 ```
+
+## 2. Módulo de alertas (`modules/alertas.py`) — diseño
+
+```mermaid
+classDiagram
+    class EstimacionDemanda {
+        +float uso_diario
+        +float compra_tipica
+    }
+    class ParametrosStock {
+        +float stock_minimo
+        +float punto_reorden
+        +float stock_maximo
+    }
+
+    class EstimadorDemanda {
+        <<abstract>>
+        +estimar(movimientos: List~MovimientoStock~)* EstimacionDemanda
+    }
+    class EstimadorPorCompras {
+        -int dias_periodo
+        +estimar(movimientos: List~MovimientoStock~) EstimacionDemanda
+    }
+    class EstimadorPorEgresos {
+        <<futuro>>
+        -int dias_periodo
+        +estimar(movimientos: List~MovimientoStock~) EstimacionDemanda
+    }
+
+    class CalculadoraParametros {
+        -EstimadorDemanda estimador
+        -int dias_reposicion = 7
+        -int dias_seguridad = 7
+        +calcular(movimientos: List~MovimientoStock~) ParametrosStock
+    }
+
+    class ServicioParametrosStock {
+        -GestorInventarioBD gestor
+        -CalculadoraParametros calculadora
+        +recalcular(repuesto: Repuesto) Optional~ParametrosStock~
+        +recalcular_todos() int
+    }
+
+    class ReglaAlerta {
+        <<abstract>>
+        +str tipo
+        +evaluar(repuesto: Repuesto)* bool
+        +mensaje(repuesto: Repuesto)* str
+    }
+    class ReglaReorden {
+        +evaluar(repuesto: Repuesto) bool
+        +mensaje(repuesto: Repuesto) str
+    }
+    class ReglaCritico {
+        +evaluar(repuesto: Repuesto) bool
+        +mensaje(repuesto: Repuesto) str
+    }
+    class ReglaSobrestock {
+        +evaluar(repuesto: Repuesto) bool
+        +mensaje(repuesto: Repuesto) str
+    }
+
+    class MotorAlertas {
+        -List~ReglaAlerta~ reglas
+        -RepositorioAlertas repositorio
+        +revisar(repuesto: Repuesto) List~Alerta~
+        +revisar_todos(repuestos: List~Repuesto~) List~Alerta~
+    }
+
+    %% Strategy 1: cómo se estima la demanda
+    EstimadorDemanda <|-- EstimadorPorCompras
+    EstimadorDemanda <|-- EstimadorPorEgresos
+    EstimadorDemanda ..> MovimientoStock : lee
+    EstimadorDemanda ..> EstimacionDemanda : crea
+    CalculadoraParametros o-- "1" EstimadorDemanda : usa
+    CalculadoraParametros ..> ParametrosStock : crea
+    ServicioParametrosStock --> CalculadoraParametros
+    ServicioParametrosStock --> GestorInventarioBD
+
+    %% Strategy 2: qué condición dispara cada alerta
+    ReglaAlerta <|-- ReglaReorden
+    ReglaAlerta <|-- ReglaCritico
+    ReglaAlerta <|-- ReglaSobrestock
+    ReglaAlerta ..> Repuesto : evalúa
+    MotorAlertas o-- "1..*" ReglaAlerta : aplica
+    MotorAlertas --> RepositorioAlertas
+    MotorAlertas ..> Alerta : crea
+```
+
+Las clases `Repuesto`, `MovimientoStock`, `Alerta`, `GestorInventarioBD` y `RepositorioAlertas` del segundo diagrama son las mismas del primero; se repiten solo como referencia de las relaciones.
