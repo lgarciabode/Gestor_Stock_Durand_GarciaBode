@@ -3,7 +3,7 @@ Encapsula las operaciones de persistencia (alta, lectura, modificacion y baja) s
 
 import sqlite3
 from typing import List, Optional
-from modules.modelos import Categoria, Marca, MovimientoStock, Proveedor, Repuesto
+from modules.modelos import Categoria, Marca, MovimientoStock, Proveedor, Repuesto, validar_umbrales
 
 def _fila_a_repuesto(f: sqlite3.Row) -> Repuesto:
     """Convierte una fila de la tabla repuestos en un objeto Repuesto."""
@@ -19,6 +19,7 @@ def _fila_a_repuesto(f: sqlite3.Row) -> Repuesto:
         punto_reorden=f["punto_reorden"],
         stock_actual=f["stock_actual"],
         activo=bool(f["activo"]),
+        parametros_manuales=bool(f["parametros_manuales"]),
     )
 
 
@@ -113,8 +114,9 @@ class GestorInventarioBD:
         marca y codigo, o si la unidad de medida no es 'unidad' ni 'cm'."""
         cursor = self.conexion.execute(
             """INSERT INTO repuestos (codigo, marca_id, categoria_id, especificaciones,
-                unidad_medida, stock_minimo, stock_maximo, punto_reorden, stock_actual, activo)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                unidad_medida, stock_minimo, stock_maximo, punto_reorden, stock_actual, activo,
+                parametros_manuales)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
             rep.codigo,
             rep.marca_id,
@@ -126,6 +128,7 @@ class GestorInventarioBD:
             rep.punto_reorden,
             rep.stock_actual,
             int(rep.activo),
+            int(rep.parametros_manuales),
             ),
         )
         self.conexion.commit()
@@ -172,10 +175,21 @@ class GestorInventarioBD:
 
 
 #PARAMETROS DE STOCK Y ALERTAS
-    def actualizar_parametros_stock(self, repuesto_id: int, stock_minimo: float, stock_maximo: Optional[float], punto_reorden: Optional[float],) -> None:
-        """Permite ajustar los umbrales de reorden"""
+    def actualizar_parametros_stock(self, repuesto_id: int, stock_minimo: float, stock_maximo: Optional[float],
+                                    punto_reorden: Optional[float], manual: bool = True) -> None:
+        """Guarda los umbrales de un repuesto.
+
+        Pre: los umbrales son coherentes (minimo <= punto_reorden <= maximo, ninguno
+        negativo); si no, lanza RepuestoInvalidoError y NO guarda nada.
+        `manual=True` (valor por defecto, el de la interfaz) marca el repuesto como
+        corregido a mano: el recalculo automatico no lo va a pisar. El calculo
+        automatico (ServicioParametrosStock) llama con `manual=False`.
+        """
+        validar_umbrales(stock_minimo, punto_reorden, stock_maximo)
         self.conexion.execute(
-            """UPDATE repuestos SET stock_minimo = ?, stock_maximo = ?, punto_reorden = ? WHERE id = ?""", (stock_minimo, stock_maximo, punto_reorden, repuesto_id),
+            """UPDATE repuestos SET stock_minimo = ?, stock_maximo = ?, punto_reorden = ?, parametros_manuales = ?
+               WHERE id = ?""",
+            (stock_minimo, stock_maximo, punto_reorden, int(manual), repuesto_id),
         )
         self.conexion.commit()
 

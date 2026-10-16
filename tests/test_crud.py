@@ -10,7 +10,7 @@ from modules.base_datos import crear_esquema, obtener_conexion
 from modules.crud import GestorInventarioBD
 import sqlite3
 
-from modules.modelos import Categoria, Marca, MovimientoStock, Proveedor, Repuesto
+from modules.modelos import Categoria, Marca, MovimientoStock, Proveedor, Repuesto, RepuestoInvalidoError
 
 
 class PruebaGestorInventarioBD(unittest.TestCase):
@@ -232,16 +232,44 @@ class PruebaGestorInventarioBD(unittest.TestCase):
         # Arrange
         en_cm = Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id,
                          codigo="CADENA-1", unidad_medida="cm")
-        en_kg = Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id,
-                         codigo="CADENA-2", unidad_medida="kg")
 
         # Act
         id_cm = self.gestor.crear_repuestos(en_cm)
 
-        # Assert
+        # Assert: "cm" se guarda; "kg" lo rechaza el propio Repuesto al crearse
+        # (invariante), antes de llegar a la base.
         self.assertEqual(self.gestor.obtener_repuesto_id(id_cm).unidad_medida, "cm")
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.gestor.crear_repuestos(en_kg)
+        with self.assertRaises(RepuestoInvalidoError):
+            Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id,
+                     codigo="CADENA-2", unidad_medida="kg")
+
+    def test_actualizar_parametros_rechaza_umbrales_incoherentes(self):
+        # Arrange
+        repuesto_id = self.gestor.crear_repuestos(
+            Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="X1")
+        )
+
+        # Act / Assert: reorden (2) menor que el minimo (5) -> error y no se guarda nada
+        with self.assertRaises(RepuestoInvalidoError):
+            self.gestor.actualizar_parametros_stock(repuesto_id, stock_minimo=5.0,
+                                                    stock_maximo=50.0, punto_reorden=2.0)
+        self.assertIsNone(self.gestor.obtener_repuesto_id(repuesto_id).punto_reorden)
+
+    def test_actualizar_parametros_marca_si_son_manuales(self):
+        # Arrange
+        repuesto_id = self.gestor.crear_repuestos(
+            Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="X2")
+        )
+
+        # Act: la interfaz (por defecto) los marca como manuales; el calculo automatico no
+        self.gestor.actualizar_parametros_stock(repuesto_id, 2.0, 18.0, 4.0)
+        manual = self.gestor.obtener_repuesto_id(repuesto_id).parametros_manuales
+        self.gestor.actualizar_parametros_stock(repuesto_id, 2.0, 18.0, 4.0, manual=False)
+        automatico = self.gestor.obtener_repuesto_id(repuesto_id).parametros_manuales
+
+        # Assert
+        self.assertTrue(manual)
+        self.assertFalse(automatico)
 
     # --- Movimientos de stock --------------------------------------------
 

@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS repuestos (
     punto_reorden REAL,
     stock_actual REAL NOT NULL DEFAULT 0,
     activo INTEGER NOT NULL DEFAULT 1,
+    -- 1 = los umbrales (minimo, reorden, maximo) los corrigio una persona a
+    -- mano: el recalculo automatico no los pisa (ver docs/modulo_alertas.md).
+    parametros_manuales INTEGER NOT NULL DEFAULT 0 CHECK (parametros_manuales IN (0, 1)),
     UNIQUE (marca_id, codigo)
 );
 
@@ -119,14 +122,22 @@ CREATE TABLE IF NOT EXISTS detalle_orden_compra (
     cantidad_sugerida REAL NOT NULL
 );
 
+-- Alertas de stock (modulo de alertas, ver docs/modulo_alertas.md).
+-- Se cierran a mano (atendida = 1) y nunca se borran: quedan como historial.
 CREATE TABLE IF NOT EXISTS alertas (
     id INTEGER PRIMARY KEY,
     repuesto_id INTEGER NOT NULL REFERENCES repuestos(id),
     fecha DATE NOT NULL,
-    tipo TEXT NOT NULL,
-    mensaje TEXT NOT NULL,
-    atendida INTEGER NOT NULL DEFAULT 0
+    tipo TEXT NOT NULL CHECK (tipo IN ('REORDEN', 'CRITICO', 'SOBRESTOCK')),
+    mensaje TEXT NOT NULL CHECK (length(trim(mensaje)) > 0),
+    atendida INTEGER NOT NULL DEFAULT 0 CHECK (atendida IN (0, 1))
 );
+
+-- Invariante del modulo: nunca dos alertas ABIERTAS del mismo tipo para el
+-- mismo repuesto. Indice unico "parcial": solo cuenta las filas con
+-- atendida = 0, asi las alertas ya atendidas pueden repetirse en el historial.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_alertas_abierta_unica
+    ON alertas (repuesto_id, tipo) WHERE atendida = 0;
 """
 
 
