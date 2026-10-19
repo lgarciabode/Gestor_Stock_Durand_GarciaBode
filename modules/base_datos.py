@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
     fecha DATE NOT NULL,
     tipo TEXT NOT NULL CHECK (tipo IN ('INGRESO', 'EGRESO', 'AJUSTE')),
     cantidad REAL NOT NULL,
-    codigo_proveedor_raw TEXT,  -- trazabilidad opcional (se completa solo en la carga histórica)
+    codigo_proveedor_raw TEXT,  -- trazabilidad opcional 
     origen TEXT NOT NULL DEFAULT 'manual' CHECK (origen IN ('carga_inicial', 'manual'))
 );
 

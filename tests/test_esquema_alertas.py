@@ -1,16 +1,4 @@
-"""Pruebas del esquema de la base para el modulo de alertas (Paso 1).
 
-Verifican las reglas que la propia base de datos hace cumplir, sin pasar
-todavia por las clases del modulo:
-- `repuestos.parametros_manuales` arranca en 0 y solo acepta 0 o 1.
-- `alertas.tipo` solo acepta REORDEN, CRITICO o SOBRESTOCK.
-- `alertas.mensaje` no puede estar vacio.
-- Invariante: nunca dos alertas ABIERTAS del mismo tipo para el mismo
-  repuesto (indice unico parcial `idx_alertas_abierta_unica`).
-
-Mismo estilo que el resto de la suite: unittest puro, una base SQLite
-temporal por test (setUp/tearDown) y patron AAA (Arrange, Act, Assert).
-"""
 import sqlite3
 import sys
 import tempfile

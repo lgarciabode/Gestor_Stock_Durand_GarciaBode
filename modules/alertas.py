@@ -68,10 +68,12 @@ class EstimadorDemanda(ABC):
 
     @abstractmethod
     def estimar(self, movimientos: List[MovimientoStock]) -> EstimacionDemanda:
-        ...
+        """Devuelve la estimación de demanda a partir de los movimientos de stock del repuesto."""
+        pass
 
     @staticmethod
     def _verificar_mismo_repuesto(movimientos: List[MovimientoStock]) -> None:
+        """Verifica que todos los movimientos sean del mismo repuesto; si no, lanza ValueError."""
         if len({m.repuesto_id for m in movimientos}) > 1:
             raise ValueError("Los movimientos a estimar tienen que ser de un solo repuesto.")
 
@@ -86,16 +88,17 @@ class EstimadorPorCompras(EstimadorDemanda):
     """
 
     def __init__(self, dias_periodo: int):
-        # Pre: el período tiene que tener al menos un día.
         if dias_periodo <= 0:
             raise ValueError(f"Los días del período tienen que ser mayores que 0 (se recibió {dias_periodo}).")
         self._dias_periodo = dias_periodo
 
     @property
     def dias_periodo(self) -> int:
+        """Devuelve la cantidad de días del período que se está considerando para estimar la demanda."""
         return self._dias_periodo
 
     def estimar(self, movimientos: List[MovimientoStock]) -> EstimacionDemanda:
+        """Post: uso_diario >= 0 y compra_tipica >= 0; si no hay ingresos, ambos = 0."""
         self._verificar_mismo_repuesto(movimientos)
         ingresos = [m for m in movimientos if m.tipo == "INGRESO"]
         if not ingresos:
@@ -145,10 +148,12 @@ class CalculadoraParametros:
 
     @property
     def dias_reposicion(self) -> int:
+        """Devuelve la cantidad de días de reposición que se está considerando para calcular los umbrales."""
         return self._dias_reposicion
 
     @property
     def dias_seguridad(self) -> int:
+        """Devuelve la cantidad de días de seguridad que se está considerando para calcular los umbrales."""
         return self._dias_seguridad
 
     def calcular(self, movimientos: List[MovimientoStock]) -> Optional[ParametrosStock]:

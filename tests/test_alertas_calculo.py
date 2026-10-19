@@ -1,14 +1,4 @@
-"""Pruebas del calculo de umbrales (Paso 3 del modulo de alertas).
 
-- EstimadorPorCompras y CalculadoraParametros se prueban sin base de datos.
-- Un "doble de prueba" (EstimadorFijo, un stub) muestra que la calculadora
-  funciona con CUALQUIER estimador: depende de la abstraccion, no de la clase
-  concreta (inversion de dependencias + Strategy, Unidades 3 y 4).
-- Una prueba de integracion recalcula el ejemplo real del documento de
-  fundamentos (rodamiento 6204 2RS ZKL -> minimo 2, reorden 4, maximo 18).
-
-unittest puro, patron AAA (Arrange, Act, Assert).
-"""
 import sys
 import tempfile
 import unittest
