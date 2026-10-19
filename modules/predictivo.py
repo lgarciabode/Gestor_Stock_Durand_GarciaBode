@@ -67,7 +67,7 @@ class PredictorDemandaFactory:
     #Si mas del 70% de los periodos son cero, entonces es demanda intermitente
         proporcion_ceros = (serie_historica == 0 ).mean() if len(serie_historica) > 0 else 1.0  
 
-        if proporcion_ceros > 0.5:
+        if proporcion_ceros > 0.7:
             return PrediccionEsporadica()
         else:
             return PrediccionDemandaRegular()
@@ -129,7 +129,7 @@ class ServicioPrediccion:
 
             #Predecir
             proyeccion = estrategia.predecir(serie, meses_a_proyectar)
-            demanda_promedio = sum(proyeccion) / len(proyeccion) if proyeccion else 0.0
+            demanda_promedio =round(sum(proyeccion) / len(proyeccion),2) if proyeccion else 0.0
 
             #Calcular
             stock_actual = repuesto.get('stock_actual', 0.0)
