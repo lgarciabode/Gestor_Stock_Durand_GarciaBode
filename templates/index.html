@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+{% block titulo %}Inicio{% endblock %}
+{% block encabezado %}Buen día{% endblock %}
+{% block subtitulo %}Resumen del stock al {{ hoy }}{% endblock %}
+
+{% block contenido %}
+{% set urgentes = cantidad_por_estado[Estado.URGENTE] + cantidad_por_estado[Estado.AGOTADO] %}
+
+<section class="kpis">
+  <article class="tarjeta">
+    <div class="etiqueta">Repuestos activos</div>
+    <div class="valor">{{ total_repuestos }}</div>
+    <div class="detalle">{{ total_categorias }} categorías · {{ total_marcas }} marcas</div>
+  </article>
+  <article class="tarjeta">
+    <div class="etiqueta">Hay que pedir</div>
+    <div class="valor">{{ cantidad_por_estado[Estado.HAY_QUE_PEDIR] }}</div>
+    <div class="detalle">Llegaron al punto de reorden</div>
+  </article>
+  <article class="tarjeta">
+    <div class="etiqueta">Urgentes o agotados</div>
+    <div class="valor">{{ urgentes }}</div>
+    <div class="detalle">En el mínimo o sin stock</div>
+  </article>
+  <article class="tarjeta">
+    <div class="etiqueta">Sin datos todavía</div>
+    <div class="valor">{{ cantidad_por_estado[Estado.SIN_DATOS] }}</div>
+    <div class="detalle">Sin umbrales calculados</div>
+  </article>
+</section>
+
+<section class="panel">
+  <h2>Estado del stock</h2>
+  <ul class="lista-estados">
+    {% for estado, etiqueta in etiquetas.items() if estado != Estado.INACTIVO %}
+      <li>
+        <span class="badge badge-{{ clases_css[estado] }}">{{ etiqueta }}</span>
+        <strong>{{ cantidad_por_estado[estado] }}</strong>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

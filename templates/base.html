@@ -1,0 +1,41 @@
+{#
+  Molde de las pantallas de auth-module (login, registro, recuperar contraseña).
+
+  ¿Por qué se llama base.html? Las plantillas del módulo hacen
+  {% extends 'base.html' %} y Flask busca primero en esta carpeta, así que
+  este archivo REEMPLAZA al molde del módulo (que tiene el logo del LICA).
+  Por eso tiene que respetar lo que esas plantillas esperan:
+    - un bloque llamado "content" (en inglés, como en el módulo);
+    - las clases que usan sus formularios (form-control, btn...), que están
+      definidas en static/css/acceso.css (sin Bootstrap: funciona sin internet).
+  Las pantallas propias del gestor NO usan este archivo: usan layout.html.
+#}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ t('title') }} · Jannon & Durand</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/estilos.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/acceso.css') }}">
+</head>
+<body class="acceso">
+  <main class="acceso-tarjeta">
+    <header class="acceso-marca">
+      <span class="marca-barra"></span>
+      <strong>Jannon &amp; Durand</strong>
+      <small>Gestor de stock · Tornería</small>
+    </header>
+
+    <div class="acceso-cuerpo">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="aviso aviso-{{ category }} mb-3" role="status">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,60 @@
+{#
+  Molde común de todas las pantallas del gestor.
+  IMPORTANTE: no renombrar a "base.html". Las pantallas de auth-module
+  (login, registro) extienden "base.html" y Flask usaría este archivo en su lugar.
+#}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Gestor de stock{% endblock %} · Jannon & Durand</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/estilos.css') }}">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="marca">
+      <span class="marca-barra"></span>
+      <strong>Jannon &amp; Durand</strong>
+      <small>Gestor de stock · Tornería</small>
+    </div>
+
+    <nav>
+      <a href="{{ url_for('index') }}" class="{{ 'activo' if request.endpoint == 'index' }}">Inicio</a>
+      {# Se habilitan a medida que se crea cada pantalla #}
+      <span class="pendiente" title="Próximamente">Movimientos</span>
+      <span class="pendiente" title="Próximamente">Registrar movimiento</span>
+      <span class="pendiente" title="Próximamente">Catálogo</span>
+      <span class="pendiente" title="Próximamente">Alertas</span>
+      <span class="pendiente" title="Próximamente">Proveedores</span>
+      <span class="pendiente" title="Próximamente">Dashboard</span>
+    </nav>
+
+    <div class="usuario">
+      <span class="usuario-avatar"></span>
+      <div>
+        <strong>{{ session.get('email', '') }}</strong>
+        <a href="{{ url_for('auth.logout') }}">Cerrar sesión</a>
+      </div>
+    </div>
+  </aside>
+
+  <main class="contenido">
+    {% with mensajes = get_flashed_messages(with_categories=true) %}
+      {% for categoria, mensaje in mensajes %}
+        <div class="aviso aviso-{{ categoria }}" role="status">{{ mensaje }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <header class="encabezado">
+      <div>
+        <h1>{% block encabezado %}{% endblock %}</h1>
+        <p class="subtitulo">{% block subtitulo %}{% endblock %}</p>
+      </div>
+      <div class="acciones">{% block acciones %}{% endblock %}</div>
+    </header>
+
+    {% block contenido %}{% endblock %}
+  </main>
+</body>
+</html>
