@@ -98,16 +98,18 @@ class PreprocesadorPredicciones:
 
 @dataclass
 class ResultadoPrediccion:
+    """Contenedor de datos (DTO) para los resultados del modelo predictivo."""
     repuesto_id: str
     descripcion: str
     metodo_aplicado: str
-    demanda_mensual_estimada: float #promedio mensual proyctado
+    demanda_mensual_estimada: float
     proyeccion_por_mes: List[float]
-    sugerencia_recompra_unidades: float #unidades a comprar segund stock actual
+    demanda_acumulada_dias: Dict[str, float]      # {'30d': X, '60d': Y, '90d': Z}
+    sugerencia_recompra_dias: Dict[str, float]    # {'30d': X, '60d': Y, '90d': Z}
 
 
 class ServicioPrediccion:
-    """Servicio priciapa, orquestador, corrdina la carga de datos, seleccion del modelo de prediccion y sugerencia de recompra"""
+    """Orquestador principal de las predicciones."""
 
     def __init__(self, repositorio_datos):
         self.repo = repositorio_datos
@@ -121,28 +123,31 @@ class ServicioPrediccion:
         for _, repuesto in df_catalogos.iterrows():
             r_id = repuesto['id']
 
-            #Obtener la serie
             serie = PreprocesadorPredicciones.preparar_serie_mensual(df_movimientos, r_id)
-
-            #Elegir la estrategia 
             estrategia = PredictorDemandaFactory.obtener_estrategia(serie)
-
-            #Predecir
             proyeccion = estrategia.predecir(serie, meses_a_proyectar)
-            demanda_promedio =round(sum(proyeccion) / len(proyeccion),2) if proyeccion else 0.0
-
-            #Calcular
+            
+            demanda_promedio = round(sum(proyeccion) / len(proyeccion), 2) if proyeccion else 0.0
             stock_actual = repuesto.get('stock_actual', 0.0)
-            
-            faltante = max(0.0, proyeccion[0] - stock_actual) if proyeccion else 0.0
-            
+
+            # --- Cálculos de acumulados a 30, 60 y 90 días ---
+            demanda_30d = round(proyeccion[0], 2) if len(proyeccion) >= 1 else 0.0
+            demanda_60d = round(sum(proyeccion[:2]), 2) if len(proyeccion) >= 2 else demanda_30d
+            demanda_90d = round(sum(proyeccion[:3]), 2) if len(proyeccion) >= 3 else demanda_60d
+
+            # --- Sugerencias de recompra restando stock actual ---
+            recompra_30d = max(0.0, round(demanda_30d - stock_actual, 2))
+            recompra_60d = max(0.0, round(demanda_60d - stock_actual, 2))
+            recompra_90d = max(0.0, round(demanda_90d - stock_actual, 2))
+
             resultados.append(ResultadoPrediccion(
                 repuesto_id=r_id,
                 descripcion=repuesto['descripcion'],
                 metodo_aplicado=estrategia.__class__.__name__,
                 demanda_mensual_estimada=demanda_promedio,
                 proyeccion_por_mes=proyeccion,
-                sugerencia_recompra_unidades=round(faltante, 2)
+                demanda_acumulada_dias={'30d': demanda_30d, '60d': demanda_60d, '90d': demanda_90d},
+                sugerencia_recompra_dias={'30d': recompra_30d, '60d': recompra_60d, '90d': recompra_90d}
             ))
-            
+
         return resultados

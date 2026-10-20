@@ -38,10 +38,11 @@ if __name__ == '__main__':
     resultados = servicio.generar_predicciones_catalogo(meses_a_proyectar=3)
     
     # Imprimimos los resultados
-    for r in resultados:
-        print(f"ID: {r.repuesto_id} | {r.descripcion}")
-        print(f"  - Método aplicado : {r.metodo_aplicado}")
-        print(f"  - Demanda mensual : {r.demanda_mensual_estimada} u")
-        print(f"  - Proyección      : {r.proyeccion_por_mes}")
-        print(f"  - Recompra sugerida: {r.sugerencia_recompra_unidades} u")
-        print("-" * 50)
+for r in resultados:
+    print(f"ID: {r.repuesto_id} | {r.descripcion}")
+    print(f"  - Método aplicado   : {r.metodo_aplicado}")
+    print(f"  - Demanda mensual   : {r.demanda_mensual_estimada} u/mes")
+    print(f"  - Proyección        : {r.proyeccion_por_mes}")
+    print(f"  - Demanda acumulada : 30d: {r.demanda_acumulada_dias['30d']}u | 60d: {r.demanda_acumulada_dias['60d']}u | 90d: {r.demanda_acumulada_dias['90d']}u")
+    print(f"  - Recompra sugerida : 30d: {r.sugerencia_recompra_dias['30d']}u | 60d: {r.sugerencia_recompra_dias['60d']}u | 90d: {r.sugerencia_recompra_dias['90d']}u")
+    print("-" * 60)
