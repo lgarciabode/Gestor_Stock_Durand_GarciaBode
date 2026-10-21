@@ -15,14 +15,14 @@ class RepositorioSimulado:
     def obtener_todos_los_movimientos(self) -> pd.DataFrame:
         datos = [
             # REP-001: Demanda continua
-            {'repuesto_id': 'REP-001', 'fecha': '2026-01-15', 'cantidad': 8},
-            {'repuesto_id': 'REP-001', 'fecha': '2026-02-10', 'cantidad': 7},
-            {'repuesto_id': 'REP-001', 'fecha': '2026-03-05', 'cantidad': 10},
-            {'repuesto_id': 'REP-001', 'fecha': '2026-04-12', 'cantidad': 6},
+            {'repuesto_id': 'REP-001', 'fecha': '2026-01-15', 'cantidad': 8, 'tipo': 'INGRESO'},
+            {'repuesto_id': 'REP-001', 'fecha': '2026-02-10', 'cantidad': 7, 'tipo': 'INGRESO'},
+            {'repuesto_id': 'REP-001', 'fecha': '2026-03-05', 'cantidad': 10, 'tipo': 'INGRESO'},
+            {'repuesto_id': 'REP-001', 'fecha': '2026-04-12', 'cantidad': 6, 'tipo': 'INGRESO'},
 
             # REP-002: Demanda esporádica
-            {'repuesto_id': 'REP-002', 'fecha': '2026-01-20', 'cantidad': 5},
-            {'repuesto_id': 'REP-002', 'fecha': '2026-04-18', 'cantidad': 4},
+            {'repuesto_id': 'REP-002', 'fecha': '2026-01-20', 'cantidad': 5, 'tipo': 'INGRESO'},
+            {'repuesto_id': 'REP-002', 'fecha': '2026-04-18', 'cantidad': 4, 'tipo': 'INGRESO'},
         ]
         return pd.DataFrame(datos)
 
@@ -35,7 +35,7 @@ if __name__ == '__main__':
     servicio = ServicioPrediccion(gestor_bd=repo)
     
     # Ejecutamos la predicción
-    resultados = servicio.generar_predicciones_catalogo(meses_a_proyectar=3)
+    resultados = servicio.generar_predicciones_catalogo(meses_a_proyectar=3, fecha_referencia = "2026-10-01")
     
     # Imprimimos los resultados
 for r in resultados:
