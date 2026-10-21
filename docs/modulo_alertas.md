@@ -1,6 +1,6 @@
 # 🔔 Módulo de alertas — análisis y diseño
 
-> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 y 2 de desarrollo — base de datos y modelos — hechos el 15/10/2026).
+> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026).
 > Diagrama de clases: `docs/diagrama_UML.md` (sección 2) y `docs/diagramaUML.puml`.
 
 El módulo avisa cuándo hay que reponer un repuesto, cuándo está en riesgo de faltar y cuándo hay stock de más. Cada repuesto tiene **sus propios umbrales**, calculados a partir de cuánto se usa: un mismo stock mínimo para todos no sirve (lo mostró el EDA, `templates/eda_repuestos.ipynb`).
@@ -106,7 +106,7 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
 | Inversión de dependencias — DIP (Unidad 3) | El motor depende de `ReglaAlerta` y la calculadora de `EstimadorDemanda`, no de las clases concretas |
 | Patrón Strategy (Unidad 3) | Dos veces: estimador de demanda y reglas de alerta (igual que los parsers) |
 | Persistencia con `sqlite3` (Unidad 4) | `RepositorioAlertas` y la tabla `alertas` |
-| Pruebas unitarias y dobles de prueba (Unidad 4) | Estimador, calculadora y reglas se prueban sin base de datos; el motor, con un repositorio *stub* |
+| Pruebas unitarias y dobles de prueba (Unidad 4) | Estimador, calculadora y reglas se prueban sin base de datos; el motor, con un repositorio falso en memoria (*fake*); el servicio de umbrales, con un `Mock` |
 
 ## 5. Contratos (diseño por contratos, Unidades 3 y 4)
 
@@ -119,11 +119,13 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
 | `EstimadorPorCompras(dias_periodo)` | Pre: `dias_periodo > 0`, si no `ValueError` |
 | `EstimadorPorCompras.estimar(movs)` | Post: cuenta solo INGRESOS; uso diario y compra típica ≥ 0; sin ingresos → 0 y 0 |
 | `CalculadoraParametros(L, S)` | Pre: L > 0 y S ≥ 0, si no `ParametrosInvalidosError` |
-| `CalculadoraParametros.calcular(movs)` | Post: con ingresos, 1 ≤ mínimo ≤ reorden ≤ máximo, enteros; sin ingresos → `None` |
+| `CalculadoraParametros.calcular(movs)` | Post: con ingresos, mínimo ≤ reorden ≤ máximo, enteros (mínimo ≥ 1 si S > 0); sin ingresos → `None` |
 | `ServicioParametrosStock.recalcular(rep)` | Post: si `parametros_manuales = 1` o el repuesto está inactivo, no cambia nada; si no, guarda lo calculado |
 | `ReglaAlerta.evaluar(rep)` | Post: devuelve `bool` y no modifica el repuesto (Liskov) |
 | `MotorAlertas.revisar(rep)` | Post: inactivo o sin umbrales → `[]`; por cada regla que se cumple queda exactamente una alerta abierta de ese tipo |
-| `RepositorioAlertas` (invariante) | Nunca dos alertas abiertas con el mismo repuesto y tipo (índice único parcial en la base) |
+| `MotorAlertas(reglas, …)` | Pre: al menos una regla, si no `ValueError` |
+| `RepositorioAlertas` (invariante) | Nunca dos alertas abiertas con el mismo repuesto y tipo (índice único parcial en la base); si se intenta, `AlertaDuplicadaError` |
+| `RepositorioAlertas.obtener_abiertas()` | Post: ordenadas de lo más urgente a lo menos (CRITICO, REORDEN, SOBRESTOCK); no muestra las de repuestos inactivos, pero tampoco las borra |
 | `RepositorioAlertas.marcar_atendida(id)` | Pre: existe y está abierta, si no `AlertaNoEncontradaError`; post: `atendida = 1` |
 
 ## 6. Cambios en la base de datos (aplicados en el Paso 1 de desarrollo)
@@ -142,6 +144,28 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
 5. Desarrollo, cada paso con sus pruebas:
     1. ~~Base de datos~~ (15/10).
     2. ~~Modelos~~ (15/10): métodos y `estado()` de `Repuesto`, enumerado `EstadoStock`, dataclass `Alerta`, invariantes con excepciones propias (`RepuestoInvalidoError`, `AlertaInvalidaError`) y validación de umbrales al guardarlos. Pruebas: `tests/test_modelos.py`.
-    3. Cálculo: `EstimadorPorCompras` y `CalculadoraParametros` (`modules/alertas.py`).
-    4. Guardado de umbrales: `obtener_movimientos` y `ServicioParametrosStock`.
-    5. Alertas: reglas, `MotorAlertas` y `RepositorioAlertas`.
+    3. ~~Cálculo~~ (15/10): `EstimadorDemanda` (abstracta), `EstimadorPorCompras`, `CalculadoraParametros`, `ParametrosInvalidosError` y los diccionarios de palabras para la interfaz (`ETIQUETAS_*`) en `modules/alertas.py`. Pruebas: `tests/test_alertas_calculo.py` (incluye el 6204 con datos reales → 2 / 4 / 18).
+    4. ~~Guardado de umbrales~~ (15/10): `GestorInventarioBD.obtener_movimientos` y `obtener_periodo_movimientos`; `ServicioParametrosStock` (con `desde_historial`, que toma el período del primer al último movimiento). Pruebas: `tests/test_alertas_parametros.py` (incluye un `Mock` del gestor y el recálculo de los 192 repuestos reales).
+
+    > **Hallazgo:** `stock_actual` hoy es la **suma de todas las compras desde enero**, porque nunca se registraron egresos; no es el stock real del estante. Con umbrales calculados, 16 repuestos aparecen con "Sobra stock" (ej. 6204: 55 comprados, máximo 18) y 18 como "Urgente" (repuestos comprados una vez de a 1 unidad). Antes de usar las alertas hace falta un **conteo físico** y registrarlo como movimientos de AJUSTE.
+    5. ~~Alertas~~ (16/10): `ReglaAlerta` (abstracta), `ReglaReorden`, `ReglaCritico`, `ReglaSobrestock`, `MotorAlertas` y `reglas_por_defecto()` en `modules/alertas.py`; `RepositorioAlertas`, `AlertaNoEncontradaError` y `AlertaDuplicadaError` en `modules/crud.py`. Pruebas: `tests/test_alertas_motor.py` (26 pruebas: reglas solas, motor con repositorio falso, repositorio con base real y un flujo completo "hay que pedir → ya lo pedí → agotado").
+
+    Cómo se usa (lo que hará la interfaz cada vez que se registra un movimiento):
+
+    ```python
+    from modules.alertas import MotorAlertas, reglas_por_defecto
+    from modules.crud import GestorInventarioBD, RepositorioAlertas
+
+    gestor = GestorInventarioBD(conexion)
+    repositorio = RepositorioAlertas(conexion)
+    motor = MotorAlertas(reglas_por_defecto(), repositorio)
+
+    gestor.registrar_movimiento(mov)                              # 1. se guarda el egreso/ingreso
+    nuevas = motor.revisar(gestor.obtener_repuesto_id(mov.repuesto_id))  # 2. se revisa ese repuesto
+    pendientes = repositorio.obtener_abiertas()                   # 3. lo que se muestra en pantalla
+    repositorio.marcar_atendida(alerta_id)                        # 4. botón "Ya lo pedí"
+    ```
+
+    Las reglas son excluyentes en su condición: con stock en el mínimo o por debajo salta **CRITICO** (no REORDEN); entre el mínimo y el punto de reorden, **REORDEN**. Si una REORDEN quedó abierta y el stock sigue bajando, se suma la CRITICO (escalada).
+
+6. Pendiente antes de usarlo con la base real: conteo físico y registro como AJUSTE (ver hallazgo). Después: la pantalla de alertas en la interfaz.
