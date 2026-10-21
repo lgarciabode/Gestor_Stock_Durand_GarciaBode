@@ -1,6 +1,6 @@
 # 🔔 Módulo de alertas — análisis y diseño
 
-> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026).
+> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Paso 6 — conteo físico — hecho el 20/10/2026).
 > Diagrama de clases: `docs/diagrama_UML.md` (sección 2) y `docs/diagramaUML.puml`.
 
 El módulo avisa cuándo hay que reponer un repuesto, cuándo está en riesgo de faltar y cuándo hay stock de más. Cada repuesto tiene **sus propios umbrales**, calculados a partir de cuánto se usa: un mismo stock mínimo para todos no sirve (lo mostró el EDA, `templates/eda_repuestos.ipynb`).
@@ -126,6 +126,8 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
 | `MotorAlertas(reglas, …)` | Pre: al menos una regla, si no `ValueError` |
 | `RepositorioAlertas` (invariante) | Nunca dos alertas abiertas con el mismo repuesto y tipo (índice único parcial en la base); si se intenta, `AlertaDuplicadaError` |
 | `RepositorioAlertas.obtener_abiertas()` | Post: ordenadas de lo más urgente a lo menos (CRITICO, REORDEN, SOBRESTOCK); no muestra las de repuestos inactivos, pero tampoco las borra |
+| `Repuesto.ajuste_por_conteo(contado, fecha)` | Pre: el repuesto tiene id (si no `RepuestoInvalidoError`); contado ≥ 0 y sin decimales si la unidad es "unidad" (si no `ConteoInvalidoError`). Post: `None` si coincide con el stock; si no, un AJUSTE con cantidad = contado − stock. No modifica el repuesto |
+| `GestorInventarioBD.registrar_conteo(id, contado, fecha)` | Pre: el repuesto existe (si no `RepuestoNoEncontradoError`). Post: `stock_actual` = contado; no reescribe movimientos anteriores |
 | `RepositorioAlertas.marcar_atendida(id)` | Pre: existe y está abierta, si no `AlertaNoEncontradaError`; post: `atendida = 1` |
 
 ## 6. Cambios en la base de datos (aplicados en el Paso 1 de desarrollo)
@@ -168,4 +170,17 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
 
     Las reglas son excluyentes en su condición: con stock en el mínimo o por debajo salta **CRITICO** (no REORDEN); entre el mínimo y el punto de reorden, **REORDEN**. Si una REORDEN quedó abierta y el stock sigue bajando, se suma la CRITICO (escalada).
 
-6. Pendiente antes de usarlo con la base real: conteo físico y registro como AJUSTE (ver hallazgo). Después: la pantalla de alertas en la interfaz.
+    6. ~~Conteo físico~~ (20/10): `Repuesto.ajuste_por_conteo` y `ConteoInvalidoError` en `modules/modelos.py`; `GestorInventarioBD.registrar_conteo` y `RepuestoNoEncontradoError` en `modules/crud.py`. Pruebas: `tests/test_conteo.py` (19 pruebas, incluye el 6204 con datos reales).
+
+        Quien usa el sistema escribe **lo que contó** en el estante ("hay 3"). El `Repuesto`, que conoce su `stock_actual`, calcula la diferencia (3 − 55 = −52) y arma un movimiento de **AJUSTE**; el gestor lo guarda y el trigger deja `stock_actual = 3`. No se reescribe ningún movimiento: queda registrado cuándo y cuánto se corrigió. Si lo contado coincide, no se guarda nada.
+
+        ```python
+        gestor.registrar_conteo(repuesto_id, cantidad_contada=3, fecha="2026-10-20")
+        motor.revisar(gestor.obtener_repuesto_id(repuesto_id))   # ahora sí, alertas reales
+        ```
+
+        El AJUSTE **no es compra ni consumo**: `EstimadorPorCompras` solo cuenta INGRESOS. Para el módulo de predicción (todavía no incorporado): un AJUSTE negativo no debe leerse como uso del repuesto.
+
+        > **Hallazgo:** `ServicioParametrosStock.desde_historial` toma el período del primer al **último** movimiento. Un conteo hecho hoy estira el período (en el histórico, de 212 a 289 días), así que el uso diario baja y los umbrales pueden bajar un poco (6204: de 2 / 4 / 18 a 2 / 3 / 17). Es correcto: desde agosto pasó tiempo sin compras. Conviene **recalcular los umbrales después del conteo inicial**.
+
+    7. Pendiente: conteo inicial de los 192 repuestos (desde la interfaz o una planilla), recalcular umbrales y después la pantalla de alertas en la interfaz.

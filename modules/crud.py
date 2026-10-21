@@ -5,6 +5,10 @@ import sqlite3
 from typing import List, Optional
 from modules.modelos import Alerta, Categoria, Marca, MovimientoStock, Proveedor, Repuesto, validar_umbrales
 
+class RepuestoNoEncontradoError(LookupError):
+    """No existe un repuesto con ese id."""
+
+
 def _fila_a_repuesto(f: sqlite3.Row) -> Repuesto:
     """Convierte una fila de la tabla repuestos en un objeto Repuesto."""
     return Repuesto(
@@ -219,6 +223,27 @@ class GestorInventarioBD:
         )
         self.conexion.commit()
         return cursor.lastrowid
+
+    def registrar_conteo(self, repuesto_id: int, cantidad_contada: float, fecha: str) -> Optional[int]:
+        """Registra un conteo físico: deja el stock igual a lo que hay en el estante.
+
+        Quien usa el sistema escribe lo que CONTÓ (ej. "hay 12"); la diferencia
+        con el stock del sistema la calcula el Repuesto y se guarda como un
+        movimiento de AJUSTE. Así no se reescribe ningún movimiento anterior y
+        queda registrado cuándo y cuánto se corrigió.
+
+        Pre:  el repuesto existe, si no RepuestoNoEncontradoError; la cantidad
+              es válida, si no ConteoInvalidoError (ver Repuesto.ajuste_por_conteo).
+        Post: stock_actual == cantidad_contada. Devuelve el id del AJUSTE, o
+              None si no había diferencia (no se guarda nada).
+        """
+        rep = self.obtener_repuesto_id(repuesto_id)
+        if rep is None:
+            raise RepuestoNoEncontradoError(f"No existe el repuesto con id {repuesto_id}.")
+        ajuste = rep.ajuste_por_conteo(cantidad_contada, fecha)
+        if ajuste is None:
+            return None
+        return self.registrar_movimiento(ajuste)
 
     def obtener_movimientos(self, repuesto_id: int) -> List[MovimientoStock]:
         """Todos los movimientos de un repuesto, del mas viejo al mas nuevo.

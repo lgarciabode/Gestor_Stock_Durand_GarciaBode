@@ -52,6 +52,7 @@ classDiagram
         +tiene_sobrestock() bool
         +calcular_sugerencia_compra() float
         +estado() EstadoStock
+        +ajuste_por_conteo(cantidad_contada: float, fecha: str) Optional~MovimientoStock~
     }
 
     class EstadoStock {
@@ -105,6 +106,7 @@ classDiagram
         +obtener_repuestos_bajo_reorden() List~Repuesto~
         +registrar_movimiento(mov: MovimientoStock) int
         +obtener_movimientos(repuesto_id: int) List~MovimientoStock~
+        +registrar_conteo(repuesto_id: int, cantidad_contada: float, fecha: str) Optional~int~
     }
 
     class RepositorioAlertas {
@@ -154,6 +156,7 @@ classDiagram
     MovimientoStock "0..*" --> "0..1" Proveedor : comprado a
     Alerta "0..*" --> "1" Repuesto : avisa sobre
     Repuesto ..> EstadoStock : calcula
+    Repuesto ..> MovimientoStock : crea AJUSTE (conteo)
 
     GestorInventarioBD ..> Proveedor : manipula
     GestorInventarioBD ..> Repuesto : manipula

@@ -25,6 +25,11 @@ class AlertaInvalidaError(ValueError):
     """La alerta no cumple su invariante (tipo desconocido o mensaje vacío)."""
 
 
+class ConteoInvalidoError(ValueError):
+    """La cantidad contada en el estante no tiene sentido: es negativa, o tiene
+    decimales en un repuesto que se cuenta por unidad."""
+
+
 # ---------------------------------------------------------------- Constantes
 
 UNIDADES_MEDIDA = ("unidad", "cm")
@@ -148,6 +153,37 @@ class Repuesto:
         if self.tiene_sobrestock():
             return EstadoStock.SOBRESTOCK
         return EstadoStock.DISPONIBLE
+
+    # --- Conteo físico ----------------------------------------------------
+
+    def ajuste_por_conteo(self, cantidad_contada: float, fecha: str) -> Optional["MovimientoStock"]:
+        """Arma el AJUSTE que deja el stock del sistema igual a lo contado en el estante.
+
+        El Repuesto es quien conoce su stock_actual, por eso sabe calcular la
+        diferencia (diseño dirigido por responsabilidades). No guarda nada:
+        de eso se encarga GestorInventarioBD.
+
+        Pre:  el repuesto ya está guardado (tiene id), si no RepuestoInvalidoError;
+              cantidad_contada >= 0 y, si la unidad es "unidad", sin decimales;
+              si no, ConteoInvalidoError.
+        Post: si lo contado coincide con el stock devuelve None (no hay nada que corregir);
+              si no, un MovimientoStock de tipo AJUSTE con
+              cantidad = contado - stock_actual (negativa si falta, positiva si sobra).
+              No modifica el repuesto: el stock lo actualiza la base al guardar el movimiento.
+        """
+        if self.id is None:
+            raise RepuestoInvalidoError("El repuesto todavía no está guardado: no se le puede registrar un conteo.")
+        if cantidad_contada < 0:
+            raise ConteoInvalidoError(f"La cantidad contada no puede ser negativa (se recibió {cantidad_contada}).")
+        if self.unidad_medida == "unidad" and cantidad_contada != int(cantidad_contada):
+            raise ConteoInvalidoError(
+                f"Este repuesto se cuenta por unidad: la cantidad no puede tener decimales (se recibió {cantidad_contada})."
+            )
+        # round(…, 6): evita diferencias fantasma de punto flotante (ej. 0.1 + 0.2 - 0.3)
+        diferencia = round(cantidad_contada - self.stock_actual, 6)
+        if diferencia == 0:
+            return None
+        return MovimientoStock(id=None, repuesto_id=self.id, fecha=fecha, tipo="AJUSTE", cantidad=diferencia)
 
 
 def validar_umbrales(stock_minimo: float, punto_reorden: Optional[float],

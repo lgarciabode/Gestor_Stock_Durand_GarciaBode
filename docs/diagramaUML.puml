@@ -56,6 +56,7 @@ package "Modelo de Dominio (modules/modelos.py)" {
         +tiene_sobrestock(): bool
         +calcular_sugerencia_compra(): float
         +estado(): EstadoStock
+        +ajuste_por_conteo(cantidad_contada: float, fecha: str): Optional<MovimientoStock>
     }
 
     enum EstadoStock {
@@ -109,6 +110,7 @@ package "Capa de Persistencia (modules/crud.py)" {
         +obtener_repuestos_bajo_reorden(): List<Repuesto>
         +registrar_movimiento(mov: MovimientoStock): int
         +obtener_movimientos(repuesto_id: int): List<MovimientoStock>
+        +registrar_conteo(repuesto_id: int, cantidad_contada: float, fecha: str): Optional<int>
     }
 
     class RepositorioAlertas {
@@ -233,6 +235,7 @@ MovimientoStock "0..*" --> "1" Repuesto : impacta sobre
 MovimientoStock "0..*" --> "0..1" Proveedor : comprado a
 Alerta "0..*" --> "1" Repuesto : avisa sobre
 Repuesto ..> EstadoStock : calcula
+Repuesto ..> MovimientoStock : crea AJUSTE (conteo)
 
 ' ---------------- Persistencia ----------------
 GestorInventarioBD ..> Proveedor : manipula
