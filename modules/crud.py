@@ -5,6 +5,7 @@ import sqlite3
 from typing import List, Optional
 from modules.modelos import (MENSAJE_STOCK_NEGATIVO, Alerta, Categoria, Marca, MovimientoStock, Proveedor,
                              Repuesto, StockNegativoError, validar_umbrales)
+import pandas as pd
 
 class RepuestoNoEncontradoError(LookupError):
     """No existe un repuesto con ese id."""
@@ -321,6 +322,34 @@ class GestorInventarioBD:
             return None
         return fila[0], fila[1]
 
+    # PREDICCION
+    def obtener_catalogo_repuestos_df(self) -> pd.DataFrame:
+            """Obtiene el catalogo de repuestos activo."""
+            query = """
+                SELECT 
+                    id, 
+                    codigo AS descripcion, 
+                    stock_actual 
+                FROM repuestos 
+                WHERE activo = 1
+            """
+            return pd.read_sql_query(query, self.conexion)
+
+    def obtener_todos_los_movimientos_df(self) -> pd.DataFrame:
+        """Obtiene la historia real de movimientos
+        Estructurado para las series temporales de ServicioPrediccion.
+        """
+        query = f"""
+            SELECT 
+                repuesto_id, 
+                fecha, 
+                cantidad, 
+                tipo 
+            FROM movimientos_stock
+            WHERE {_SOLO_VIGENTES}
+            """
+        return pd.read_sql_query(query, self.conexion)
+
 
 # ================================================================ ALERTAS
 
@@ -409,3 +438,4 @@ class RepositorioAlertas:
             self.conexion.rollback()
             raise AlertaNoEncontradaError(f"No hay una alerta abierta con id {alerta_id}.")
         self.conexion.commit()
+
