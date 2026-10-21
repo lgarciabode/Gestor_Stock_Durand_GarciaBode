@@ -79,6 +79,23 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
 CREATE INDEX IF NOT EXISTS idx_movimientos_repuesto_fecha
     ON movimientos_stock (repuesto_id, fecha);
 
+-- Regla del taller: el stock nunca queda negativo (solo valores >= 0).
+-- La controla el código (Repuesto.stock_despues_de) y, como última defensa,
+-- este trigger: si un INSERT dejaría el stock < 0, la base lo rechaza.
+-- (El margen -0.000001 evita falsos rechazos por redondeo de decimales.)
+CREATE TRIGGER IF NOT EXISTS trg_movimientos_stock_no_negativo
+BEFORE INSERT ON movimientos_stock
+WHEN (SELECT stock_actual FROM repuestos WHERE id = NEW.repuesto_id) + (
+        CASE NEW.tipo
+            WHEN 'INGRESO' THEN NEW.cantidad
+            WHEN 'EGRESO' THEN -NEW.cantidad
+            ELSE NEW.cantidad
+        END
+    ) < -0.000001
+BEGIN
+    SELECT RAISE(ABORT, 'Operación inválida: el stock no puede quedar negativo. Solo se admiten valores iguales o mayores a cero.');
+END;
+
 CREATE TRIGGER IF NOT EXISTS trg_movimientos_actualiza_stock
 AFTER INSERT ON movimientos_stock
 BEGIN

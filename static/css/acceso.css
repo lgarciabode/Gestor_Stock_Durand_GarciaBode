@@ -1,0 +1,61 @@
+/* ============================================================
+   Pantallas de acceso de auth-module (login, registro, recuperar contraseña)
+   con la estética del taller.
+   Las plantillas del módulo usan nombres de clases de Bootstrap
+   (form-control, btn-primary, mb-3...). En vez de cargar Bootstrap desde
+   internet, se definen acá solo las que usan: así el login funciona
+   aunque el taller se quede sin conexión.
+   ============================================================ */
+body.acceso {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; margin: 0; padding: 24px;
+  background: var(--plomo-50); color: var(--plomo-900);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 14px;
+}
+.acceso-tarjeta {
+  width: 100%; max-width: 420px; background: #fff;
+  border: 1px solid var(--plomo-200); border-radius: 12px; overflow: hidden;
+}
+.acceso-marca {
+  background: var(--pino-900); color: #fff; padding: 28px 32px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.acceso-marca strong { font-size: 20px; }
+.acceso-marca small { color: var(--pino-100); }
+.acceso-cuerpo { padding: 28px 32px 32px; }
+.acceso-cuerpo h2 { margin: 0; font-size: 22px; font-weight: 700; }
+.acceso-cuerpo p { margin: 0; }
+.acceso a { color: var(--cobrizo-700); }
+
+/* --- Formularios --- */
+.acceso .form-label { display: block; margin: 0 0 6px; font-weight: 600; font-size: 13px; color: var(--plomo-700); }
+.acceso .form-control {
+  display: block; width: 100%; padding: 10px 12px; margin-bottom: 12px;
+  font: inherit; color: var(--plomo-900); background: #fff;
+  border: 1px solid var(--plomo-300); border-radius: 6px;
+}
+.acceso .form-control:focus { outline: none; border-color: var(--pino-500); box-shadow: 0 0 0 3px rgba(46, 107, 82, .2); }
+
+/* --- Botones --- */
+.acceso .btn {
+  display: inline-block; padding: 10px 16px; font: inherit; font-weight: 600; text-align: center;
+  border: 1px solid transparent; border-radius: 6px; cursor: pointer; text-decoration: none;
+}
+.acceso .btn-primary { background: var(--pino-700); color: #fff; }
+.acceso .btn-primary:hover { background: var(--pino-900); }
+.acceso .btn-secondary { background: #fff; color: var(--pino-700); border-color: var(--pino-700); }
+.acceso .btn-outline-dark { background: #fff; color: var(--plomo-900); border-color: var(--plomo-300); }
+
+/* --- Utilidades con nombres de Bootstrap --- */
+.acceso .w-100 { width: 100%; }
+.acceso .text-center { text-align: center; }
+.acceso .d-flex { display: flex; }
+.acceso .d-grid { display: grid; }
+.acceso .flex-column { flex-direction: column; }
+.acceso .gap-2 { gap: 8px; }
+.acceso .mb-1 { margin-bottom: 4px; }
+.acceso .mb-3 { margin-bottom: 16px; }
+.acceso .mb-4 { margin-bottom: 24px; }
+.acceso .mt-2 { margin-top: 8px; }
+.acceso .mt-3 { margin-top: 16px; }
+.acceso-cuerpo p + p { margin-top: 8px; }

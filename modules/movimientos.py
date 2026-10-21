@@ -16,7 +16,7 @@ from datetime import date
 from typing import List, Optional
 
 from modules.alertas import MotorAlertas
-from modules.modelos import Alerta, MovimientoStock, Repuesto
+from modules.modelos import Alerta, MovimientoStock, Repuesto, StockNegativoError
 
 
 class MovimientoInvalidoError(ValueError):
@@ -79,14 +79,15 @@ class ServicioMovimientos:
         self._validar_fecha(fecha)
         if cantidad > rep.stock_actual:
             raise MovimientoInvalidoError(
-                f"No se pueden quitar {cantidad:g}: según el sistema hay {rep.stock_actual:g}. "
-                "Si en el estante hay más, registrá primero el stock disponible."
+                f"Operación inválida: no se pueden quitar {cantidad:g} porque según el sistema hay {rep.stock_actual:g} "
+                "y el stock no puede quedar negativo. "
+                "Si en el estante hay más, corregí primero el stock con la planilla de conteo."
             )
         mov = MovimientoStock(id=None, repuesto_id=repuesto_id, fecha=fecha, tipo="EGRESO", cantidad=cantidad)
         return self._guardar_y_revisar(mov)
 
     def registrar_conteo(self, repuesto_id: int, cantidad_contada: float, fecha: str) -> ResultadoMovimiento:
-        """Corregir el stock con lo que hay en el estante (opción "Stock disponible").
+        """Corregir el stock con lo que hay en el estante (hoy la pantalla no lo ofrece: los conteos entran por la planilla).
 
         Pre: repuesto activo; fecha válida y no futura; cantidad válida
              (la valida Repuesto.ajuste_por_conteo).
@@ -125,8 +126,8 @@ class ServicioMovimientos:
         efecto = {"INGRESO": original.cantidad, "EGRESO": -original.cantidad}.get(original.tipo, original.cantidad)
         if rep.stock_actual - efecto < 0:
             raise MovimientoInvalidoError(
-                f"No se puede anular: el stock quedaría en {rep.stock_actual - efecto:g}. "
-                "Esas unidades ya se usaron; registrá el stock disponible con lo que hay en el estante."
+                f"Operación inválida: si se anula, el stock quedaría en {rep.stock_actual - efecto:g} "
+                "y no puede quedar negativo. Esas unidades ya se usaron; corregí el stock con la planilla de conteo."
             )
         anulacion = MovimientoStock(id=None, repuesto_id=rep.id, fecha=self._hoy(), tipo="AJUSTE",
                                     cantidad=-efecto or 0.0, anula_id=movimiento_id)
@@ -148,7 +149,7 @@ class ServicioMovimientos:
     @staticmethod
     def _validar_cantidad(rep: Repuesto, cantidad: float) -> None:
         if cantidad <= 0:
-            raise MovimientoInvalidoError("La cantidad tiene que ser mayor que 0.")
+            raise MovimientoInvalidoError("Operación inválida: la cantidad tiene que ser mayor que 0.")
         if rep.unidad_medida == "unidad" and cantidad != int(cantidad):
             raise MovimientoInvalidoError(f"{rep.codigo} se cuenta por unidad: la cantidad no puede tener decimales.")
 
@@ -168,7 +169,10 @@ class ServicioMovimientos:
     # ------------------------------------------------------------ guardar
 
     def _guardar_y_revisar(self, mov: MovimientoStock) -> ResultadoMovimiento:
-        movimiento_id = self._gestor.registrar_movimiento(mov)
+        try:
+            movimiento_id = self._gestor.registrar_movimiento(mov)
+        except StockNegativoError as error:  # última defensa: el gestor o la base lo frenaron
+            raise MovimientoInvalidoError(str(error)) from error
         return self._resultado(movimiento_id, mov.repuesto_id)
 
     def _resultado(self, movimiento_id: int, repuesto_id: int) -> ResultadoMovimiento:

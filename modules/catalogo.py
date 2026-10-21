@@ -122,7 +122,7 @@ class ServicioCatalogo:
         if rep.stock_actual != 0:
             raise CatalogoInvalidoError(
                 f"Solo se inactiva un repuesto sin stock: {rep.codigo} todavía tiene {rep.stock_actual:g}. "
-                "Si en el estante no hay, registrá primero el stock disponible en 0."
+                "Si en el estante no hay, corregí primero el stock a 0 con la planilla de conteo."
             )
         rep.activo = False
         self._gestor.actualizar_repuesto(rep)

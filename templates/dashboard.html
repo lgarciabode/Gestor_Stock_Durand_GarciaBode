@@ -1,0 +1,141 @@
+{% extends "layout.html" %}
+{% block titulo %}Dashboard{% endblock %}
+{% block encabezado %}Dashboard{% endblock %}
+{% block subtitulo %}El stock del taller de un vistazo{% endblock %}
+
+{% block contenido %}
+{% set total_activos = avance.total %}
+
+<section class="kpis">
+  <article class="tarjeta">
+    <div class="etiqueta">Repuestos activos</div>
+    <div class="valor">{{ total_activos }}</div>
+    <div class="detalle">{{ estados[Estado.HAY_QUE_PEDIR] }} para pedir · {{ estados[Estado.URGENTE] + estados[Estado.AGOTADO] }} urgentes</div>
+  </article>
+  <article class="tarjeta">
+    <div class="etiqueta">Conteo inicial</div>
+    <div class="valor">{{ avance.porcentaje }}%</div>
+    <div class="barra"><span style="width: {{ avance.porcentaje }}%"></span></div>
+    <div class="detalle">{{ avance.contados }} de {{ avance.total }} repuestos contados</div>
+  </article>
+  <article class="tarjeta">
+    <div class="etiqueta">Alertas sin atender</div>
+    <div class="valor">{{ alertas_abiertas_total }}</div>
+    <div class="detalle"><a class="enlace" href="{{ url_for('alertas') }}">Ver alertas</a></div>
+  </article>
+  <article class="tarjeta">
+    <div class="etiqueta">Proveedor principal</div>
+    <div class="valor valor-texto">{{ proveedores[0].proveedor.nombre if proveedores else "—" }}</div>
+    <div class="detalle">{% if proveedores %}{{ (100 * proveedores[0].compras / total_compras)|round|int }}% de las compras{% endif %}</div>
+  </article>
+</section>
+
+{% if avance.porcentaje < 100 %}
+  <div class="aviso aviso-alerta">
+    Faltan contar {{ avance.total - avance.contados }} repuestos. Hasta contarlos, su estado se calcula con el stock de la
+    carga histórica (todo lo comprado desde enero) y no entran en "stock inmovilizado".
+  </div>
+{% endif %}
+
+<div class="columnas columnas-iguales">
+  <section class="panel">
+    <h2>Estado del stock</h2>
+    <ul class="grafico-barras">
+      {% for estado, texto in etiquetas.items() if estado != Estado.INACTIVO %}
+        {% set n = estados[estado] %}
+        <li>
+          <span class="badge badge-{{ clases_css[estado] }}">{{ texto }}</span>
+          <div class="barra"><span class="barra-{{ clases_css[estado] }}" style="width: {{ (100 * n / (total_activos or 1))|round|int }}%"></span></div>
+          <strong>{{ n }}</strong>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="panel">
+    <h2>Compras por proveedor</h2>
+    {% if proveedores %}
+      <ul class="grafico-barras">
+        {% for r in proveedores %}
+          {% set pct = (100 * r.compras / total_compras)|round|int %}
+          <li>
+            <a class="enlace etiqueta-barra" href="{{ url_for('ficha_proveedor', proveedor_id=r.proveedor.id) }}">{{ r.proveedor.nombre }}</a>
+            <div class="barra"><span style="width: {{ pct }}%"></span></div>
+            <strong>{{ pct }}%</strong>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="secundario">Porcentaje de las compras (días con compra) a cada proveedor.</p>
+    {% else %}<p class="vacio">Todavía no hay compras.</p>{% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Compras por mes</h2>
+  {% if meses %}
+    <div class="columnas-mes">
+      {% for m in meses %}
+        <div class="mes" title="{{ m.compras }} compras · {{ m.lineas }} renglones · {{ '%g'|format(m.unidades)|replace('.', ',') }} unidades">
+          <span class="mes-valor">{{ m.lineas }}</span>
+          <div class="mes-barra"><span style="height: {{ (100 * m.lineas / max_lineas_mes)|round|int }}%"></span></div>
+          <span class="mes-nombre">{{ m.nombre }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    <p class="secundario">Renglones de compra por mes (cada repuesto comprado es un renglón). Pasá el mouse por una barra para ver el detalle.</p>
+  {% else %}<p class="vacio">Todavía no hay compras.</p>{% endif %}
+</section>
+
+<div class="columnas columnas-iguales">
+  {% for titulo, filas in (("Los que más se mueven", mas), ("Los que menos se mueven", menos)) %}
+    <section class="panel">
+      <h2>{{ titulo }}</h2>
+      {% if filas %}
+        {% set maximo = (mas[0].por_mes if mas else 1) or 1 %}
+        <table class="tabla">
+          <thead><tr><th>Repuesto</th><th>Por mes</th></tr></thead>
+          <tbody>
+            {% for f in filas %}
+              <tr>
+                <td><a class="enlace" href="{{ url_for('ficha_repuesto', repuesto_id=f.repuesto.id) }}">{{ f.repuesto.codigo }}</a>
+                  <div class="secundario">{{ f.marca }} · {{ f.categoria }}</div></td>
+                <td>
+                  <div class="barra-celda">
+                    <div class="barra"><span style="width: {{ (100 * f.por_mes / maximo)|round|int }}%"></span></div>
+                    <span>{{ '%g'|format(f.por_mes)|replace('.', ',') }}</span>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}<p class="vacio">Todavía no hay compras.</p>{% endif %}
+    </section>
+  {% endfor %}
+</div>
+<p class="secundario nota">Rotación estimada con las compras: unidades compradas por mes. Cuando se carguen los usos ("Quitar"), se podrá medir con lo que realmente se usa. No incluye los repuestos que se cuentan en cm.</p>
+
+<section class="panel">
+  <h2>Stock inmovilizado</h2>
+  {% if inmovilizado %}
+    <table class="tabla">
+      <thead><tr><th>Repuesto</th><th class="numero">En stock</th><th>Por qué</th></tr></thead>
+      <tbody>
+        {% for f in inmovilizado %}
+          <tr>
+            <td><a class="enlace" href="{{ url_for('ficha_repuesto', repuesto_id=f.repuesto.id) }}">{{ f.repuesto.codigo }}</a>
+              <div class="secundario">{{ f.marca }} · {{ f.categoria }}</div></td>
+            <td class="numero">{{ texto_cantidad(f.repuesto, f.repuesto.stock_actual) }}</td>
+            <td>{{ f.motivos|join(" · ") }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% elif avance.contados == 0 %}
+    <p class="vacio">Se va a poder ver cuando se cuenten los repuestos: hasta entonces no se sabe cuánto hay de verdad.</p>
+  {% else %}
+    <p class="vacio">Nada inmovilizado entre los repuestos contados.</p>
+  {% endif %}
+  <p class="secundario">Repuestos contados que tienen más que el máximo o que no se movieron en los últimos {{ dias_quieto }} días.</p>
+</section>
+{% endblock %}

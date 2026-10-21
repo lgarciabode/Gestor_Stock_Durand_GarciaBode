@@ -11,6 +11,7 @@ Ejecutar desde la raíz del proyecto:
     flask --app apps.app_1 run --debug
 """
 import io
+import os
 from collections import Counter
 from datetime import date, timedelta
 
@@ -33,10 +34,13 @@ from modules.alertas import (ETIQUETAS_ATENDER_ALERTA, ETIQUETAS_ESTADO,
 from modules.base_datos import inicializar_si_hace_falta, obtener_conexion
 from modules.catalogo import (CatalogoInvalidoError, FiltroCatalogo,
                               ServicioCatalogo)
+from modules.dashboard import DIAS_SIN_MOVIMIENTO, ConsultaDashboard
 from modules.crud import (AlertaNoEncontradaError, GestorInventarioBD,
                           RepositorioAlertas, RepuestoNoEncontradoError)
 from modules.modelos import EstadoStock
 from modules.movimientos import MovimientoInvalidoError, ServicioMovimientos
+from modules.proveedores import (ConsultaProveedores, ProveedorInvalidoError,
+                                 ProveedorNoEncontradoError, ServicioProveedores)
 from modules.reportes import (ETIQUETAS_TIPO_MOVIMIENTO, EXPORTADORES,
                               ConsultaMovimientos, FiltroInvalidoError,
                               FiltroMovimientos, contar_por_tipo)
@@ -130,10 +134,12 @@ def filas_de_alertas(gestor: GestorInventarioBD, alertas) -> list:
 
 # Opciones del formulario "Registrar movimiento". Las palabras son las del
 # taller; el valor es lo que viaja al servidor.
+# "Stock disponible" es solo una consulta: muestra cuánto hay y no guarda nada.
+# (Corregir el stock con lo que hay en el estante se hace con la planilla de conteo.)
 TIPOS_MOVIMIENTO_FORMULARIO = {
-    "egreso": "Quitar",
     "ingreso": "Agregar",
-    "conteo": "Stock disponible",
+    "egreso": "Quitar",
+    "stock": "Stock disponible",
 }
 
 
@@ -161,18 +167,28 @@ def buscar_repuesto_elegido(opciones: dict, texto: str):
     return por_codigo[0] if len(por_codigo) == 1 else None
 
 
+def stock_por_texto(opciones: dict) -> dict:
+    """Texto del buscador (y código solo, si no se repite) -> stock según el sistema.
+
+    Lo usa el formulario para mostrar "Según el sistema hay …" apenas se elige
+    un repuesto, antes de guardar nada.
+    """
+    stocks = {texto: texto_cantidad(rep, rep.stock_actual) for texto, rep in opciones.items()}
+    codigos = Counter(rep.codigo for rep in opciones.values())
+    for rep in opciones.values():
+        if codigos[rep.codigo] == 1:
+            stocks[rep.codigo] = texto_cantidad(rep, rep.stock_actual)
+    return stocks
+
+
+class _SoloConsulta(Exception):
+    """Corta el registro cuando se eligió "Stock disponible": se muestra el stock y no se guarda nada."""
+
+
 def mensaje_de_resultado(tipo: str, cantidad: float, resultado) -> str:
     rep = resultado.repuesto
-    if tipo == "conteo" and resultado.diferencia == 0:
-        return (f"Listo: {rep.codigo} ya tenía {texto_cantidad(rep, rep.stock_actual)}, no hubo que corregir nada. "
-                "Quedó registrado el conteo.")
-    if tipo == "conteo":
-        accion = "Stock corregido:"
-    else:
-        una = rep.unidad_medida == "unidad" and cantidad == 1  # "Se quitó 1 unidad" / "Se quitaron 4 unidades"
-        accion = {"ingreso": ("Se agregaron", "Se agregó"), "egreso": ("Se quitaron", "Se quitó")}[tipo][una]
-    if tipo == "conteo":
-        return f"Listo. {accion} {rep.codigo} quedó en {texto_cantidad(rep, rep.stock_actual)}."
+    una = rep.unidad_medida == "unidad" and cantidad == 1  # "Se quitó 1 unidad" / "Se quitaron 4 unidades"
+    accion = {"ingreso": ("Se agregaron", "Se agregó"), "egreso": ("Se quitaron", "Se quitó")}[tipo][una]
     return f"Listo. {accion} {texto_cantidad(rep, cantidad)} de {rep.codigo}. Ahora hay {texto_cantidad(rep, rep.stock_actual)}."
 
 
@@ -311,6 +327,7 @@ def registrar_rutas(app: Flask) -> None:
         hoy = date.today().isoformat()
         datos = {"tipo": "egreso", "fecha": hoy, "repuesto": "", "cantidad": "", "proveedor_id": ""}
         error = None
+        consulta = None  # texto de "Stock disponible" cuando se consulta sin JavaScript
 
         if request.method == "POST":
             datos.update({k: request.form.get(k, "").strip() for k in datos})
@@ -318,6 +335,12 @@ def registrar_rutas(app: Flask) -> None:
                 rep = buscar_repuesto_elegido(opciones, datos["repuesto"])
                 if rep is None:
                     raise MovimientoInvalidoError("Elegí un repuesto de la lista.")
+                if datos["tipo"] == "stock":
+                    # Solo consulta: no se guarda ningún movimiento.
+                    consulta = f"Stock disponible de {rep.codigo}: {texto_cantidad(rep, rep.stock_actual)}."
+                    raise _SoloConsulta
+                if not datos["cantidad"]:
+                    raise MovimientoInvalidoError("Falta la cantidad.")
                 try:
                     cantidad = float(datos["cantidad"].replace(",", "."))
                 except ValueError:
@@ -329,10 +352,10 @@ def registrar_rutas(app: Flask) -> None:
                     resultado = servicio.registrar_ingreso(rep.id, cantidad, datos["fecha"], proveedor_id)
                 elif datos["tipo"] == "egreso":
                     resultado = servicio.registrar_egreso(rep.id, cantidad, datos["fecha"])
-                elif datos["tipo"] == "conteo":
-                    resultado = servicio.registrar_conteo(rep.id, cantidad, datos["fecha"])
                 else:
                     raise MovimientoInvalidoError("Elegí qué querés registrar.")
+            except _SoloConsulta:
+                pass
             except MovimientoInvalidoError as e:
                 error = str(e)
             else:
@@ -345,8 +368,10 @@ def registrar_rutas(app: Flask) -> None:
             "registrar_movimiento.html",
             datos=datos,
             error=error,
+            consulta=consulta,
             tipos=TIPOS_MOVIMIENTO_FORMULARIO,
             opciones=opciones,
+            stock_por_texto=stock_por_texto(opciones),
             proveedores=gestor.obtener_proveedores(solo_activos=True),
             hoy=hoy,
         ), (400 if error else 200)
@@ -560,6 +585,116 @@ def registrar_rutas(app: Flask) -> None:
                 flash("Listo: el repuesto quedó inactivo. No se borró nada; se puede volver a activar.", "success")
         return _accion_en_ficha(repuesto_id, accion)
 
+    # ------------------------------------------------------------ Dashboard
+
+    @app.route("/dashboard")
+    @login_required
+    def dashboard():
+        """El estado del stock de un vistazo: estados, conteo, rotación, inmovilizado y compras."""
+        conexion = obtener_bd()
+        gestor = GestorInventarioBD(conexion)
+        consulta = ConsultaDashboard(conexion, gestor)
+        mas, menos = consulta.rotacion()
+        meses = consulta.compras_por_mes()
+        proveedores_resumen = [r for r in ConsultaProveedores(conexion).resumen() if r.compras]
+        return render_template(
+            "dashboard.html",
+            estados=consulta.estados(),
+            avance=consulta.avance_conteo(),
+            mas=mas,
+            menos=menos,
+            inmovilizado=consulta.inmovilizado(),
+            dias_quieto=DIAS_SIN_MOVIMIENTO,
+            meses=meses,
+            max_lineas_mes=max((m.lineas for m in meses), default=1),
+            proveedores=proveedores_resumen,
+            total_compras=sum(r.compras for r in proveedores_resumen) or 1,
+            alertas_abiertas_total=len(RepositorioAlertas(conexion).obtener_abiertas()),
+            etiquetas=ETIQUETAS_ESTADO,
+            clases_css=CLASE_CSS_ESTADO,
+            Estado=EstadoStock,
+            texto_cantidad=texto_cantidad,
+        )
+
+    # ------------------------------------------------------------ Proveedores
+
+    def _datos_proveedor() -> dict:
+        return {k: request.form.get(k, "").strip() for k in ("nombre", "contacto", "telefono", "email")}
+
+    @app.route("/proveedores")
+    @login_required
+    def proveedores():
+        """A quién se le compra: compras, repuestos, unidades y última compra por proveedor."""
+        incluir_inactivos = request.args.get("inactivos") == "1"
+        resumen = ConsultaProveedores(obtener_bd()).resumen(incluir_inactivos)
+        total_compras = sum(r.compras for r in resumen) or 1
+        return render_template(
+            "proveedores.html",
+            resumen=resumen,
+            total_compras=total_compras,
+            hoy=date.today(),
+            incluir_inactivos=incluir_inactivos,
+        )
+
+    @app.route("/proveedores/nuevo", methods=["GET", "POST"])
+    @login_required
+    def nuevo_proveedor():
+        datos, error = _datos_proveedor(), None
+        if request.method == "POST":
+            try:
+                nuevo_id = ServicioProveedores(GestorInventarioBD(obtener_bd())).crear(**datos)
+            except ProveedorInvalidoError as e:
+                error = str(e)
+            else:
+                flash(f"Listo: {datos['nombre']} quedó cargado. Ya se puede elegir al registrar una compra.", "success")
+                return redirect(url_for("ficha_proveedor", proveedor_id=nuevo_id))
+        return render_template("nuevo_proveedor.html", datos=datos, error=error), (400 if error else 200)
+
+    @app.route("/proveedores/<int:proveedor_id>")
+    @login_required
+    def ficha_proveedor(proveedor_id: int):
+        conexion = obtener_bd()
+        try:
+            proveedor = ServicioProveedores(GestorInventarioBD(conexion)).obtener(proveedor_id)
+        except ProveedorNoEncontradoError:
+            abort(404)
+        consulta = ConsultaProveedores(conexion)
+        resumen = next(r for r in consulta.resumen(incluir_inactivos=True) if r.proveedor.id == proveedor_id)
+        return render_template(
+            "ficha_proveedor.html",
+            p=proveedor,
+            resumen=resumen,
+            compras=consulta.repuestos_comprados(proveedor_id),
+            hoy=date.today(),
+        )
+
+    @app.route("/proveedores/<int:proveedor_id>/datos", methods=["POST"])
+    @login_required
+    def corregir_proveedor(proveedor_id: int):
+        try:
+            ServicioProveedores(GestorInventarioBD(obtener_bd())).corregir(proveedor_id, **_datos_proveedor())
+            flash("Listo: datos guardados.", "success")
+        except ProveedorInvalidoError as e:
+            flash(str(e), "warning")
+        except ProveedorNoEncontradoError:
+            abort(404)
+        return redirect(url_for("ficha_proveedor", proveedor_id=proveedor_id))
+
+    @app.route("/proveedores/<int:proveedor_id>/activo", methods=["POST"])
+    @login_required
+    def activo_proveedor(proveedor_id: int):
+        servicio = ServicioProveedores(GestorInventarioBD(obtener_bd()))
+        try:
+            if request.form.get("accion") == "activar":
+                servicio.activar(proveedor_id)
+                flash("Listo: el proveedor está activo otra vez.", "success")
+            else:
+                servicio.desactivar(proveedor_id)
+                flash("Listo: el proveedor quedó inactivo. Su historial de compras no se borra.", "success")
+        except ProveedorNoEncontradoError:
+            abort(404)
+        return redirect(url_for("ficha_proveedor", proveedor_id=proveedor_id))
+
     @app.context_processor
     def datos_del_menu():
         """Cantidad de alertas abiertas para el contador del menú lateral."""
@@ -597,6 +732,9 @@ def create_app() -> Flask:
     )
     app.config["SECRET_KEY"] = SECRET_KEY
     app.config["SESSION_TYPE"] = "filesystem"
+    # Dónde se guardan las sesiones. Las pruebas usan una carpeta temporal
+    # (ver tests/__init__.py) para no llenar flask_session/ del proyecto.
+    app.config["SESSION_FILE_DIR"] = os.environ.get("CARPETA_SESIONES", str(BASE_DIR / "flask_session"))
 
     inicializar_si_hace_falta(DATABASE_URL, RUTA_EXCEL_HISTORICO)
     actualizar_umbrales()

@@ -25,6 +25,15 @@ class AlertaInvalidaError(ValueError):
     """La alerta no cumple su invariante (tipo desconocido o mensaje vacío)."""
 
 
+class StockNegativoError(ValueError):
+    """Operación inválida: dejaría el stock de un repuesto por debajo de cero.
+    Regla del taller: el stock solo admite valores iguales o mayores a cero."""
+
+
+MENSAJE_STOCK_NEGATIVO = ("Operación inválida: el stock no puede quedar negativo. "
+                          "Solo se admiten valores iguales o mayores a cero.")
+
+
 class ConteoInvalidoError(ValueError):
     """La cantidad contada en el estante no tiene sentido: es negativa, o tiene
     decimales en un repuesto que se cuenta por unidad."""
@@ -102,6 +111,8 @@ class Repuesto:
     parametros_manuales: bool = False  # True = umbrales corregidos a mano
 
     def __post_init__(self):
+        if self.stock_actual < 0:  # invariante: el stock nunca es negativo
+            raise StockNegativoError(f"{MENSAJE_STOCK_NEGATIVO} (se recibió {self.stock_actual:g}).")
         validar_umbrales(self.stock_minimo, self.punto_reorden, self.stock_maximo)
         if self.unidad_medida not in UNIDADES_MEDIDA:
             raise RepuestoInvalidoError(
@@ -156,6 +167,20 @@ class Repuesto:
 
     # --- Conteo físico ----------------------------------------------------
 
+    def stock_despues_de(self, mov: "MovimientoStock") -> float:
+        """Cuánto stock quedaría si se aplicara `mov`, sin guardar nada.
+
+        Pre:  el resultado es >= 0; si no, StockNegativoError ("Operación inválida").
+        Post: devuelve el stock resultante; no modifica el repuesto.
+        """
+        resultado = round(self.stock_actual + mov.efecto_en_stock(), 6)
+        if resultado < 0:
+            raise StockNegativoError(
+                f"{MENSAJE_STOCK_NEGATIVO} {self.codigo} tiene {self.stock_actual:g} "
+                f"y quedaría en {resultado:g}."
+            )
+        return resultado
+
     def ajuste_por_conteo(self, cantidad_contada: float, fecha: str) -> "MovimientoStock":
         """Arma el AJUSTE que deja el stock del sistema igual a lo contado en el estante.
 
@@ -175,7 +200,10 @@ class Repuesto:
         if self.id is None:
             raise RepuestoInvalidoError("El repuesto todavía no está guardado: no se le puede registrar un conteo.")
         if cantidad_contada < 0:
-            raise ConteoInvalidoError(f"La cantidad contada no puede ser negativa (se recibió {cantidad_contada}).")
+            raise ConteoInvalidoError(
+                f"Operación inválida: la cantidad contada no puede ser negativa (se recibió {cantidad_contada:g}). "
+                "Solo se admiten valores iguales o mayores a cero."
+            )
         if self.unidad_medida == "unidad" and cantidad_contada != int(cantidad_contada):
             raise ConteoInvalidoError(
                 f"Este repuesto se cuenta por unidad: la cantidad no puede tener decimales (se recibió {cantidad_contada})."
@@ -220,6 +248,16 @@ class MovimientoStock:
     codigo_proveedor_raw: Optional[str] = None
     origen: str = "manual"  # "carga_inicial" | "manual"
     anula_id: Optional[int] = None  # si es la anulación de otro movimiento, su id
+
+    def efecto_en_stock(self) -> float:
+        """Cuánto suma (+) o resta (-) este movimiento al stock.
+        INGRESO suma, EGRESO resta y AJUSTE ya trae el signo (es una corrección).
+        Es la misma regla que aplica el trigger de la base de datos."""
+        if self.tipo == "INGRESO":
+            return self.cantidad
+        if self.tipo == "EGRESO":
+            return -self.cantidad
+        return self.cantidad
 
 
 @dataclass

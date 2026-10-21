@@ -108,6 +108,15 @@ class PruebaPantallaMovimientos(unittest.TestCase):
         self.assertIn("Se quitaron 4 unidades de 6204 2RS. Ahora hay 6 unidades.", html)
         self.assertEqual(self.repuesto().stock_actual, 6)
 
+    def test_el_formulario_sabe_cuanto_hay_de_cada_repuesto(self):
+        html = self.cliente.get("/movimientos/nuevo").get_data(as_text=True)
+        self.assertIn('"6204 2RS \\u00b7 ZKL \\u00b7 RODAMIENTO": "10 unidades"', html)
+        self.assertIn('"6204 2RS": "10 unidades"', html)  # tambien con el codigo solo
+
+    def test_cantidad_vacia(self):
+        html = self.enviar(cantidad="").get_data(as_text=True)
+        self.assertIn("Falta la cantidad.", html)
+
     def test_mensaje_en_singular(self):
         html = self.enviar(tipo="egreso", cantidad="1").get_data(as_text=True)
         self.assertIn("Se quitó 1 unidad de 6204 2RS. Ahora hay 9 unidades.", html)
@@ -124,11 +133,22 @@ class PruebaPantallaMovimientos(unittest.TestCase):
         ultimo = self.movimientos()[-1]
         self.assertEqual((ultimo.tipo, ultimo.cantidad, ultimo.proveedor_id), ("INGRESO", 5, self.prov_id))
 
-    def test_conteo_desde_la_pantalla(self):
+    def test_stock_disponible_solo_muestra_y_no_guarda(self):
+        # Act: aunque llegue una cantidad, "Stock disponible" es solo una consulta
+        respuesta = self.enviar(tipo="stock", cantidad="3")
+
+        # Assert
+        html = respuesta.get_data(as_text=True)
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn("Stock disponible de 6204 2RS: 10 unidades.", html)
+        self.assertEqual(self.repuesto().stock_actual, 10)
+        self.assertEqual(len(self.movimientos()), 1)
+
+    def test_el_formulario_ya_no_registra_conteos(self):
         html = self.enviar(tipo="conteo", cantidad="3").get_data(as_text=True)
 
-        self.assertIn("Stock corregido: 6204 2RS quedó en 3 unidades.", html)
-        self.assertEqual(self.repuesto().stock_actual, 3)
+        self.assertIn("Elegí qué querés registrar.", html)
+        self.assertEqual(self.repuesto().stock_actual, 10)
 
     def test_se_puede_escribir_solo_el_codigo(self):
         self.enviar(repuesto="6204 2RS", cantidad="1")
@@ -147,7 +167,7 @@ class PruebaPantallaMovimientos(unittest.TestCase):
         # Assert
         html = respuesta.get_data(as_text=True)
         self.assertEqual(respuesta.status_code, 400)
-        self.assertIn("No se pueden quitar 50: según el sistema hay 10.", html)
+        self.assertIn("Operación inválida: no se pueden quitar 50 porque según el sistema hay 10", html)
         self.assertIn(f'value="{OPCION_6204}"', html)  # no hay que volver a escribir todo
         self.assertEqual(len(self.movimientos()), 1)
 

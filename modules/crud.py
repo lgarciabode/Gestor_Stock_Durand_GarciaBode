@@ -3,7 +3,8 @@ Encapsula las operaciones de persistencia (alta, lectura, modificacion y baja) s
 
 import sqlite3
 from typing import List, Optional
-from modules.modelos import Alerta, Categoria, Marca, MovimientoStock, Proveedor, Repuesto, validar_umbrales
+from modules.modelos import (MENSAJE_STOCK_NEGATIVO, Alerta, Categoria, Marca, MovimientoStock, Proveedor,
+                             Repuesto, StockNegativoError, validar_umbrales)
 
 class RepuestoNoEncontradoError(LookupError):
     """No existe un repuesto con ese id."""
@@ -228,8 +229,28 @@ class GestorInventarioBD:
 
 #MOVIMIENTOS DE STOCK
     def registrar_movimiento(self, mov: MovimientoStock) -> int:
-        """Registra un movimiento de ingreso, egreso o ajuste"""
-        cursor = self.conexion.execute(
+        """Registra un movimiento de ingreso, egreso o ajuste.
+
+        Pre:  el stock del repuesto no puede quedar negativo; si no,
+              StockNegativoError ("Operación inválida") y no se guarda nada.
+              Lo controla el Repuesto (stock_despues_de) y, por si alguien
+              inserta directo en la base, también un trigger de SQLite.
+        Post: el movimiento queda guardado y devuelve su id.
+        """
+        rep = self.obtener_repuesto_id(mov.repuesto_id)
+        if rep is not None:
+            rep.stock_despues_de(mov)  # lanza StockNegativoError si quedaría < 0
+        try:
+            cursor = self._insertar_movimiento(mov)
+        except sqlite3.IntegrityError as error:
+            if "Operación inválida" in str(error):  # lo frenó el trigger de la base
+                raise StockNegativoError(MENSAJE_STOCK_NEGATIVO) from error
+            raise
+        self.conexion.commit()
+        return cursor.lastrowid
+
+    def _insertar_movimiento(self, mov: MovimientoStock):
+        return self.conexion.execute(
             """INSERT INTO movimientos_stock (repuesto_id, proveedor_id, fecha, tipo, cantidad, codigo_proveedor_raw, origen, anula_id) VALUES (?,?,?,?,?,?,?,?)""",
             (
                 mov.repuesto_id,
@@ -242,8 +263,6 @@ class GestorInventarioBD:
                 mov.anula_id,
             ),
         )
-        self.conexion.commit()
-        return cursor.lastrowid
 
     def registrar_conteo(self, repuesto_id: int, cantidad_contada: float, fecha: str) -> MovimientoStock:
         """Registra un conteo físico: deja el stock igual a lo que hay en el estante.

@@ -1,11 +1,14 @@
 {% extends "layout.html" %}
 {% block titulo %}Registrar movimiento{% endblock %}
 {% block encabezado %}Registrar movimiento{% endblock %}
-{% block subtitulo %}Cargá lo que se usó, lo que llegó o el stock disponible{% endblock %}
+{% block subtitulo %}Cargá lo que se usó o lo que llegó, o consultá el stock disponible{% endblock %}
 
 {% block contenido %}
 {% if error %}
   <div class="aviso aviso-danger" role="alert">{{ error }}</div>
+{% endif %}
+{% if consulta %}
+  <div class="aviso aviso-success" role="status">{{ consulta }}</div>
 {% endif %}
 
 <section class="panel">
@@ -27,9 +30,10 @@
       <datalist id="lista-repuestos">
         {% for texto in opciones %}<option value="{{ texto }}">{% endfor %}
       </datalist>
+      <span id="stock-actual" class="ayuda" aria-live="polite"></span>
     </label>
 
-    <div class="fila-campos">
+    <div class="fila-campos" id="campos-movimiento">
       <label class="campo">
         <span id="etiqueta-cantidad">Cantidad</span>
         <input type="number" name="cantidad" value="{{ datos.cantidad }}" min="0" step="any" required>
@@ -50,24 +54,47 @@
     </div>
 
     <div>
-      <button type="submit" class="boton">Guardar</button>
+      <button type="submit" class="boton" id="boton-guardar">Guardar</button>
     </div>
   </form>
 </section>
 
 <script>
-  // Solo ayuda visual: el proveedor tiene sentido en una compra, y en un
-  // conteo la cantidad es "cuántos hay". Sin JavaScript el formulario funciona igual.
+  // Solo ayuda visual: el proveedor tiene sentido en una compra, y
+  // "Stock disponible" es una consulta, así que se esconden cantidad, fecha y
+  // el botón Guardar. Sin JavaScript el formulario funciona igual: el servidor
+  // muestra el stock y no guarda nada.
   (function () {
     const radios = document.querySelectorAll('input[name="tipo"]');
     const proveedor = document.getElementById('campo-proveedor');
-    const etiqueta = document.getElementById('etiqueta-cantidad');
+    const campos = document.getElementById('campos-movimiento');
+    const guardar = document.getElementById('boton-guardar');
+    const stocks = {{ stock_por_texto|tojson }};
+    const repuesto = document.querySelector('input[name="repuesto"]');
+    const stockActual = document.getElementById('stock-actual');
+
+    function tipoElegido() {
+      return document.querySelector('input[name="tipo"]:checked').value;
+    }
+    function mostrarStock() {
+      const stock = stocks[repuesto.value.trim()];
+      const consulta = tipoElegido() === 'stock';
+      stockActual.classList.toggle('ayuda-destacada', consulta);
+      if (stock) {
+        stockActual.textContent = (consulta ? 'Stock disponible: ' : 'Según el sistema hay ') + stock + '.';
+      } else {
+        stockActual.textContent = consulta ? 'Elegí un repuesto para ver cuántos hay.' : '';
+      }
+    }
     function actualizar() {
-      const tipo = document.querySelector('input[name="tipo"]:checked').value;
+      const tipo = tipoElegido();
       proveedor.hidden = tipo !== 'ingreso';
-      etiqueta.textContent = tipo === 'conteo' ? 'Stock disponible' : 'Cantidad';
+      campos.hidden = tipo === 'stock';
+      guardar.parentElement.hidden = tipo === 'stock';
+      mostrarStock();
     }
     radios.forEach(r => r.addEventListener('change', actualizar));
+    repuesto.addEventListener('input', mostrarStock);
     actualizar();
   })();
 </script>

@@ -221,3 +221,7 @@ __marimo__/
 # Bases de datos
 *.sqlite3
 *.db
+flask_session/
+*.sqlite3-wal
+*.sqlite3-shm
+data/conteo_inicial.xlsx

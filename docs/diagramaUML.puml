@@ -56,8 +56,14 @@ package "Modelo de Dominio (modules/modelos.py)" {
         +tiene_sobrestock(): bool
         +calcular_sugerencia_compra(): float
         +estado(): EstadoStock
+        +stock_despues_de(mov: MovimientoStock): float
         +ajuste_por_conteo(cantidad_contada: float, fecha: str): MovimientoStock
     }
+    note bottom of Repuesto
+        inv: stock_actual >= 0
+        (si no, StockNegativoError:
+        "Operación inválida")
+    end note
 
     enum EstadoStock {
         DISPONIBLE
@@ -79,6 +85,7 @@ package "Modelo de Dominio (modules/modelos.py)" {
         +codigo_proveedor_raw: Optional<str>
         +origen: str
         +anula_id: Optional<int>
+        +efecto_en_stock(): float
     }
 
     class Alerta {
@@ -369,6 +376,82 @@ package "Catálogo (modules/catalogo.py)" {
     }
 }
 
+package "Proveedores (modules/proveedores.py)" {
+    class ResumenProveedor <<frozen>> {
+        +proveedor: Proveedor
+        +compras: int
+        +lineas: int
+        +repuestos: int
+        +unidades: float
+        +centimetros: float
+        +primera: Optional<str>
+        +ultima: Optional<str>
+        +dias_desde_ultima(hoy: date): Optional<int>
+    }
+
+    class CompraDeRepuesto <<frozen>> {
+        +repuesto_id: int
+        +codigo: str
+        +veces: int
+        +cantidad: float
+        +ultima: str
+    }
+
+    class ConsultaProveedores {
+        -conexion: Connection
+        +resumen(incluir_inactivos: bool): List<ResumenProveedor>
+        +repuestos_comprados(proveedor_id: int): List<CompraDeRepuesto>
+    }
+
+    class ServicioProveedores {
+        -gestor: GestorInventarioBD
+        +obtener(proveedor_id: int): Proveedor
+        +crear(nombre: str, contacto: str, telefono: str, email: str): int
+        +corregir(proveedor_id: int, nombre: str, contacto: str, telefono: str, email: str): None
+        +desactivar(proveedor_id: int): None
+        +activar(proveedor_id: int): None
+    }
+}
+
+package "Dashboard (modules/dashboard.py)" {
+    class ConsultaDashboard {
+        -conexion: Connection
+        -gestor: GestorInventarioBD
+        -hoy: Callable[[], date]
+        +estados(): Dict<EstadoStock, int>
+        +avance_conteo(): AvanceConteo
+        +rotacion(cantidad: int): Tuple<List<FilaRotacion>, List<FilaRotacion>>
+        +inmovilizado(dias: int): List<FilaInmovilizado>
+        +compras_por_mes(): List<FilaMes>
+    }
+
+    class AvanceConteo <<frozen>> {
+        +contados: int
+        +total: int
+        +porcentaje(): int
+    }
+
+    class FilaRotacion <<frozen>> {
+        +repuesto: Repuesto
+        +por_mes: float
+    }
+
+    class FilaInmovilizado <<frozen>> {
+        +repuesto: Repuesto
+        +exceso: float
+        +dias_sin_movimiento: Optional<int>
+        +motivos(): List<str>
+    }
+
+    class FilaMes <<frozen>> {
+        +mes: str
+        +compras: int
+        +lineas: int
+        +unidades: float
+        +nombre(): str
+    }
+}
+
 ' ---------------- Relaciones del dominio ----------------
 Repuesto "0..*" --> "1" Marca : pertenece a
 Repuesto "0..*" --> "1" Categoria : pertenece a
@@ -435,6 +518,20 @@ ServicioCatalogo ..> ServicioParametrosStock : crea (fábrica)
 ServicioCatalogo ..> FiltroCatalogo : usa
 ServicioCatalogo ..> FichaRepuesto : crea
 FichaRepuesto --> Repuesto
+
+' ---------------- Proveedores ----------------
+ConsultaProveedores ..> ResumenProveedor : crea
+ConsultaProveedores ..> CompraDeRepuesto : crea
+ResumenProveedor --> Proveedor
+ServicioProveedores --> GestorInventarioBD
+
+' ---------------- Dashboard ----------------
+ConsultaDashboard --> GestorInventarioBD
+ConsultaDashboard ..> EstimadorPorCompras : usa (rotación)
+ConsultaDashboard ..> AvanceConteo : crea
+ConsultaDashboard ..> FilaRotacion : crea
+ConsultaDashboard ..> FilaInmovilizado : crea
+ConsultaDashboard ..> FilaMes : crea
 
 ' ---------------- Movimientos del día a día ----------------
 ServicioMovimientos --> GestorInventarioBD : registra

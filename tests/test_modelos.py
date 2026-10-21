@@ -18,8 +18,10 @@ from modules.modelos import (
     Alerta,
     AlertaInvalidaError,
     EstadoStock,
+    MovimientoStock,
     Repuesto,
     RepuestoInvalidoError,
+    StockNegativoError,
 )
 
 
@@ -171,6 +173,42 @@ class PruebaInvarianteAlerta(unittest.TestCase):
     def test_mensaje_vacio_es_invalido(self):
         with self.assertRaises(AlertaInvalidaError):
             Alerta(id=None, repuesto_id=1, fecha="2026-10-15", tipo="CRITICO", mensaje="  ")
+
+
+class PruebaStockNoNegativo(unittest.TestCase):
+    """Regla del taller: el stock solo admite valores >= 0 ("Operación inválida")."""
+
+    def movimiento(self, tipo, cantidad):
+        return MovimientoStock(id=None, repuesto_id=1, fecha="2026-10-21", tipo=tipo, cantidad=cantidad)
+
+    def test_un_repuesto_no_puede_tener_stock_negativo(self):
+        with self.assertRaises(StockNegativoError) as contexto:
+            repuesto(-1)
+        self.assertIn("Operación inválida", str(contexto.exception))
+
+    def test_stock_cero_es_valido(self):
+        self.assertEqual(repuesto(0).stock_actual, 0)
+
+    def test_quitar_todo_deja_el_stock_en_cero(self):
+        self.assertEqual(repuesto(5).stock_despues_de(self.movimiento("EGRESO", 5)), 0)
+
+    def test_quitar_de_mas_es_operacion_invalida(self):
+        with self.assertRaises(StockNegativoError) as contexto:
+            repuesto(5).stock_despues_de(self.movimiento("EGRESO", 6))
+        self.assertIn("quedaría en -1", str(contexto.exception))
+
+    def test_un_ajuste_negativo_que_no_baja_de_cero_es_valido(self):
+        # Ej.: el sistema tenía 10 y en el estante hay 4 -> AJUSTE de -6, el stock queda en 4
+        self.assertEqual(repuesto(10).stock_despues_de(self.movimiento("AJUSTE", -6)), 4)
+
+    def test_un_ajuste_que_baja_de_cero_es_operacion_invalida(self):
+        with self.assertRaises(StockNegativoError):
+            repuesto(3).stock_despues_de(self.movimiento("AJUSTE", -4))
+
+    def test_efecto_de_cada_tipo_de_movimiento(self):
+        self.assertEqual(self.movimiento("INGRESO", 3).efecto_en_stock(), 3)
+        self.assertEqual(self.movimiento("EGRESO", 3).efecto_en_stock(), -3)
+        self.assertEqual(self.movimiento("AJUSTE", -3).efecto_en_stock(), -3)
 
 
 if __name__ == "__main__":

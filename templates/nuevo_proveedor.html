@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+{% block titulo %}Nuevo proveedor{% endblock %}
+{% block encabezado %}Nuevo proveedor{% endblock %}
+{% block acciones %}<a class="enlace" href="{{ url_for('proveedores') }}">Volver a proveedores</a>{% endblock %}
+
+{% block contenido %}
+{% if error %}<div class="aviso aviso-danger" role="alert">{{ error }}</div>{% endif %}
+<section class="panel">
+  <form method="post" class="formulario">
+    <label class="campo">Nombre <input type="text" name="nombre" value="{{ datos.nombre }}" required placeholder="Como figura en el remito"></label>
+    <div class="fila-campos">
+      <label class="campo">Contacto <span class="secundario">(opcional)</span><input type="text" name="contacto" value="{{ datos.contacto }}"></label>
+      <label class="campo">Teléfono <span class="secundario">(opcional)</span><input type="tel" name="telefono" value="{{ datos.telefono }}"></label>
+      <label class="campo">Email <span class="secundario">(opcional)</span><input type="email" name="email" value="{{ datos.email }}"></label>
+    </div>
+    <div><button type="submit" class="boton">Crear proveedor</button></div>
+  </form>
+</section>
+{% endblock %}

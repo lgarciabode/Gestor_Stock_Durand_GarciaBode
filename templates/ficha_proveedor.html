@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% block titulo %}{{ p.nombre }}{% endblock %}
+{% block encabezado %}{{ p.nombre }}{% endblock %}
+{% block subtitulo %}{% if p.activo %}Proveedor activo{% else %}Inactivo: no aparece al cargar compras{% endif %}{% endblock %}
+{% block acciones %}<a class="enlace" href="{{ url_for('proveedores') }}">Volver a proveedores</a>{% endblock %}
+
+{% block contenido %}
+<section class="kpis">
+  <article class="tarjeta"><div class="etiqueta">Compras</div><div class="valor">{{ resumen.compras }}</div><div class="detalle">{{ resumen.lineas }} renglones</div></article>
+  <article class="tarjeta"><div class="etiqueta">Repuestos distintos</div><div class="valor">{{ resumen.repuestos }}</div><div class="detalle">&nbsp;</div></article>
+  <article class="tarjeta"><div class="etiqueta">Unidades compradas</div><div class="valor">{{ '%g'|format(resumen.unidades)|replace('.', ',') }}</div>
+    <div class="detalle">{% if resumen.centimetros %}+ {{ '%g'|format(resumen.centimetros)|replace('.', ',') }} cm{% else %}&nbsp;{% endif %}</div></article>
+  <article class="tarjeta"><div class="etiqueta">Última compra</div>
+    <div class="valor">{% if resumen.ultima %}{{ resumen.ultima[8:10] }}/{{ resumen.ultima[5:7] }}{% else %}—{% endif %}</div>
+    <div class="detalle">{% if resumen.ultima %}hace {{ resumen.dias_desde_ultima(hoy) }} días{% else %}Sin compras{% endif %}</div></article>
+</section>
+
+<div class="columnas">
+  <section class="panel">
+    <h2>Qué se le compra</h2>
+    {% if compras %}
+      <table class="tabla">
+        <thead><tr><th>Repuesto</th><th class="numero">Veces</th><th class="numero">Cantidad</th><th>Última</th></tr></thead>
+        <tbody>
+          {% for c in compras %}
+            <tr>
+              <td><a class="enlace" href="{{ url_for('ficha_repuesto', repuesto_id=c.repuesto_id) }}">{{ c.codigo }}</a>
+                <div class="secundario">{{ c.marca }} · {{ c.categoria }}</div></td>
+              <td class="numero">{{ c.veces }}</td>
+              <td class="numero">{{ '%g'|format(c.cantidad)|replace('.', ',') }}{% if c.unidad_medida == 'cm' %} cm{% endif %}</td>
+              <td class="fecha">{{ c.ultima[8:10] }}/{{ c.ultima[5:7] }}/{{ c.ultima[:4] }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="vacio">Todavía no se le compró nada.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Datos de contacto</h2>
+    <form method="post" action="{{ url_for('corregir_proveedor', proveedor_id=p.id) }}" class="formulario">
+      <label class="campo">Nombre <input type="text" name="nombre" value="{{ p.nombre }}" required></label>
+      <label class="campo">Contacto <input type="text" name="contacto" value="{{ p.contacto or '' }}" placeholder="Con quién se habla"></label>
+      <label class="campo">Teléfono <input type="tel" name="telefono" value="{{ p.telefono or '' }}"></label>
+      <label class="campo">Email <input type="email" name="email" value="{{ p.email or '' }}"></label>
+      <div><button type="submit" class="boton boton-secundario">Guardar datos</button></div>
+    </form>
+
+    <h2>Estado</h2>
+    <form method="post" action="{{ url_for('activo_proveedor', proveedor_id=p.id) }}">
+      {% if p.activo %}
+        <input type="hidden" name="accion" value="desactivar">
+        <button type="submit" class="boton boton-secundario">Desactivar</button>
+        <p class="secundario">Deja de aparecer al cargar compras. No se borra su historial.</p>
+      {% else %}
+        <input type="hidden" name="accion" value="activar">
+        <button type="submit" class="boton">Activar</button>
+      {% endif %}
+    </form>
+  </section>
+</div>
+{% endblock %}

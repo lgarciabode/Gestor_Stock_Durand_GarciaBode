@@ -106,6 +106,12 @@ class PruebaMovimientosInvalidos(BaseMovimientos):
     def test_no_se_puede_quitar_mas_de_lo_que_hay(self):
         self.assertNoSeGuarda(self.servicio.registrar_egreso, self.rod_id, 11, HOY)
 
+    def test_quitar_de_mas_dice_que_es_operacion_invalida(self):
+        with self.assertRaises(MovimientoInvalidoError) as contexto:
+            self.servicio.registrar_egreso(self.rod_id, 11, HOY)
+        self.assertIn("Operación inválida", str(contexto.exception))
+        self.assertIn("no puede quedar negativo", str(contexto.exception))
+
     def test_cantidad_cero_o_negativa(self):
         self.assertNoSeGuarda(self.servicio.registrar_ingreso, self.rod_id, 0, HOY)
         self.assertNoSeGuarda(self.servicio.registrar_egreso, self.rod_id, -2, HOY)

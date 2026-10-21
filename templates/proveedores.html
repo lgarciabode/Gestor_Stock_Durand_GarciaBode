@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% block titulo %}Proveedores{% endblock %}
+{% block encabezado %}Proveedores{% endblock %}
+{% block subtitulo %}A quién se le compra y cuánto{% endblock %}
+
+{% block acciones %}
+  {% if incluir_inactivos %}
+    <a class="enlace" href="{{ url_for('proveedores') }}">Ocultar inactivos</a>
+  {% else %}
+    <a class="enlace" href="{{ url_for('proveedores', inactivos='1') }}">Ver inactivos</a>
+  {% endif %}
+  <a class="boton" href="{{ url_for('nuevo_proveedor') }}">Nuevo proveedor</a>
+{% endblock %}
+
+{% block contenido %}
+<section class="panel">
+  {% if resumen %}
+    <table class="tabla">
+      <thead>
+        <tr>
+          <th>Proveedor</th>
+          <th class="numero">Compras</th>
+          <th>Participación</th>
+          <th class="numero">Repuestos distintos</th>
+          <th class="numero">Unidades</th>
+          <th>Última compra</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in resumen %}
+          {% set pct = (100 * r.compras / total_compras)|round|int %}
+          <tr>
+            <td>
+              <a class="enlace" href="{{ url_for('ficha_proveedor', proveedor_id=r.proveedor.id) }}">{{ r.proveedor.nombre }}</a>
+              {% if not r.proveedor.activo %}<div class="secundario">Inactivo</div>{% endif %}
+            </td>
+            <td class="numero">{{ r.compras }}</td>
+            <td>
+              <div class="barra-celda">
+                <div class="barra"><span style="width: {{ pct }}%"></span></div>
+                <span class="secundario">{{ pct }}%</span>
+              </div>
+            </td>
+            <td class="numero">{{ r.repuestos }}</td>
+            <td class="numero">
+              {{ '%g'|format(r.unidades)|replace('.', ',') }}
+              {% if r.centimetros %}<div class="secundario">+ {{ '%g'|format(r.centimetros)|replace('.', ',') }} cm</div>{% endif %}
+            </td>
+            <td>
+              {% if r.ultima %}
+                {{ r.ultima[8:10] }}/{{ r.ultima[5:7] }}/{{ r.ultima[:4] }}
+                <div class="secundario">hace {{ r.dias_desde_ultima(hoy) }} días</div>
+              {% else %}<span class="secundario">Sin compras</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="secundario">Una compra es un día en que se le compró a ese proveedor. Todavía no se cargan precios, así que la comparación es por frecuencia.</p>
+  {% else %}
+    <p class="vacio">No hay proveedores cargados.</p>
+  {% endif %}
+</section>
+{% endblock %}

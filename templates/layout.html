@@ -29,8 +29,8 @@
         Alertas
         {% if alertas_abiertas %}<span class="contador" title="Alertas sin atender">{{ alertas_abiertas }}</span>{% endif %}
       </a>
-      <span class="pendiente" title="Próximamente">Proveedores</span>
-      <span class="pendiente" title="Próximamente">Dashboard</span>
+      <a href="{{ url_for('proveedores') }}" class="{{ 'activo' if request.endpoint in ('proveedores', 'ficha_proveedor', 'nuevo_proveedor') }}">Proveedores</a>
+      <a href="{{ url_for('dashboard') }}" class="{{ 'activo' if request.endpoint == 'dashboard' }}">Dashboard</a>
     </nav>
 
     <div class="usuario">

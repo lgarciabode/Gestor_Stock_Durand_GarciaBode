@@ -1,6 +1,6 @@
 # 📐 Diagrama de Clases UML — Gestor de Inventario
 
-> Actualizado el 20/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada`, **módulo de alertas**, **conteo inicial** con planilla y **registro de movimientos**, **historial con descargas** y **catálogo**.
+> Actualizado el 20/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada`, **módulo de alertas**, **conteo inicial** con planilla y **registro de movimientos**, **historial con descargas**, **catálogo**, **proveedores** y **dashboard**.
 > La misma información está en `diagramaUML.puml` (PlantUML) y en la imagen `Diagrama_Clases_Gestor_Stock.png`.
 
 **Notación** (Unidades 2 y 3 de POO): `+` público, `-` privado, `*` método abstracto, `<<abstract>>` clase abstracta (ABC).
@@ -52,8 +52,10 @@ classDiagram
         +tiene_sobrestock() bool
         +calcular_sugerencia_compra() float
         +estado() EstadoStock
+        +stock_despues_de(mov: MovimientoStock) float
         +ajuste_por_conteo(cantidad_contada: float, fecha: str) MovimientoStock
     }
+    note for Repuesto "inv: stock_actual >= 0 (si no, StockNegativoError: Operación inválida)"
 
     class EstadoStock {
         <<enumeration>>
@@ -76,6 +78,7 @@ classDiagram
         +Optional~str~ codigo_proveedor_raw
         +str origen
         +Optional~int~ anula_id
+        +efecto_en_stock() float
     }
 
     class Alerta {
@@ -442,4 +445,99 @@ classDiagram
     ServicioCatalogo ..> FiltroCatalogo : usa
     ServicioCatalogo ..> FichaRepuesto : crea
     FichaRepuesto --> Repuesto
+```
+
+## 7. Proveedores (modules/proveedores.py)
+
+`ConsultaProveedores` solo lee (a quién se le compra y qué); `ServicioProveedores` da de alta, corrige y activa/desactiva con sus reglas. No hay precios todavía: la comparación es por frecuencia.
+
+```mermaid
+classDiagram
+    class ResumenProveedor {
+        <<frozen>>
+        +Proveedor proveedor
+        +int compras
+        +int lineas
+        +int repuestos
+        +float unidades
+        +float centimetros
+        +Optional~str~ primera
+        +Optional~str~ ultima
+        +dias_desde_ultima(hoy) Optional~int~
+    }
+    class CompraDeRepuesto {
+        <<frozen>>
+        +int repuesto_id
+        +str codigo
+        +int veces
+        +float cantidad
+        +str ultima
+    }
+    class ConsultaProveedores {
+        -Connection conexion
+        +resumen(incluir_inactivos) List~ResumenProveedor~
+        +repuestos_comprados(proveedor_id) List~CompraDeRepuesto~
+    }
+    class ServicioProveedores {
+        -GestorInventarioBD gestor
+        +obtener(proveedor_id) Proveedor
+        +crear(nombre, contacto, telefono, email) int
+        +corregir(proveedor_id, nombre, contacto, telefono, email) None
+        +desactivar(proveedor_id) None
+        +activar(proveedor_id) None
+    }
+    ConsultaProveedores ..> ResumenProveedor : crea
+    ConsultaProveedores ..> CompraDeRepuesto : crea
+    ResumenProveedor --> Proveedor
+    ServicioProveedores --> GestorInventarioBD
+```
+
+## 8. Dashboard (modules/dashboard.py)
+
+`ConsultaDashboard` arma los números (solo lee); la pantalla los dibuja con barras en HTML/CSS. La rotación reutiliza `EstimadorPorCompras` del módulo de alertas.
+
+```mermaid
+classDiagram
+    class ConsultaDashboard {
+        -Connection conexion
+        -GestorInventarioBD gestor
+        -Callable hoy
+        +estados() Dict
+        +avance_conteo() AvanceConteo
+        +rotacion(cantidad) Tuple
+        +inmovilizado(dias) List~FilaInmovilizado~
+        +compras_por_mes() List~FilaMes~
+    }
+    class AvanceConteo {
+        <<frozen>>
+        +int contados
+        +int total
+        +porcentaje() int
+    }
+    class FilaRotacion {
+        <<frozen>>
+        +Repuesto repuesto
+        +float por_mes
+    }
+    class FilaInmovilizado {
+        <<frozen>>
+        +Repuesto repuesto
+        +float exceso
+        +Optional~int~ dias_sin_movimiento
+        +motivos() List~str~
+    }
+    class FilaMes {
+        <<frozen>>
+        +str mes
+        +int compras
+        +int lineas
+        +float unidades
+        +nombre() str
+    }
+    ConsultaDashboard --> GestorInventarioBD
+    ConsultaDashboard ..> EstimadorPorCompras : usa (rotación)
+    ConsultaDashboard ..> AvanceConteo : crea
+    ConsultaDashboard ..> FilaRotacion : crea
+    ConsultaDashboard ..> FilaInmovilizado : crea
+    ConsultaDashboard ..> FilaMes : crea
 ```

@@ -10,7 +10,8 @@ from modules.base_datos import crear_esquema, obtener_conexion
 from modules.crud import GestorInventarioBD
 import sqlite3
 
-from modules.modelos import Categoria, Marca, MovimientoStock, Proveedor, Repuesto, RepuestoInvalidoError
+from modules.modelos import (Categoria, Marca, MovimientoStock, Proveedor, Repuesto, RepuestoInvalidoError,
+                             StockNegativoError)
 
 
 class PruebaGestorInventarioBD(unittest.TestCase):
@@ -289,6 +290,43 @@ class PruebaGestorInventarioBD(unittest.TestCase):
 
         # Assert
         self.assertEqual(self.gestor.obtener_repuesto_id(repuesto_id).stock_actual, 7.0)
+
+    # --- Regla: el stock nunca queda negativo ------------------------------
+
+    def repuesto_con_stock(self, cantidad):
+        repuesto_id = self.gestor.crear_repuestos(
+            Repuesto(id=None, marca_id=self.marca_id, categoria_id=self.categoria_id, codigo="6206")
+        )
+        self.gestor.registrar_movimiento(
+            MovimientoStock(id=None, repuesto_id=repuesto_id, fecha="2026-01-10", tipo="INGRESO", cantidad=cantidad)
+        )
+        return repuesto_id
+
+    def test_el_gestor_rechaza_un_egreso_que_deja_stock_negativo(self):
+        # Arrange
+        repuesto_id = self.repuesto_con_stock(2)
+
+        # Act / Assert
+        with self.assertRaises(StockNegativoError) as contexto:
+            self.gestor.registrar_movimiento(
+                MovimientoStock(id=None, repuesto_id=repuesto_id, fecha="2026-01-15", tipo="EGRESO", cantidad=3)
+            )
+        self.assertIn("Operación inválida", str(contexto.exception))
+        self.assertEqual(self.gestor.obtener_repuesto_id(repuesto_id).stock_actual, 2)  # no se guardó nada
+        self.assertEqual(len(self.gestor.obtener_movimientos(repuesto_id)), 1)
+
+    def test_la_base_rechaza_un_insert_directo_que_deja_stock_negativo(self):
+        # Arrange: alguien se saltea el código y escribe directo en la base
+        repuesto_id = self.repuesto_con_stock(2)
+
+        # Act / Assert: el trigger de SQLite lo frena igual
+        with self.assertRaises(sqlite3.IntegrityError) as contexto:
+            self.conexion.execute(
+                "INSERT INTO movimientos_stock (repuesto_id, fecha, tipo, cantidad) VALUES (?, '2026-01-15', 'AJUSTE', -5)",
+                (repuesto_id,),
+            )
+        self.assertIn("Operación inválida", str(contexto.exception))
+        self.assertEqual(self.gestor.obtener_repuesto_id(repuesto_id).stock_actual, 2)
 
 
 if __name__ == "__main__":

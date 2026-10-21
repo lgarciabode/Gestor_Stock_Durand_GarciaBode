@@ -17,3 +17,13 @@ if not DATABASE_URL:
 RUTA_EXCEL_HISTORICO = os.environ.get("RUTA_EXCEL_HISTORICO", "").strip() or str(
     BASE_DIR / "data" / "base_stock_taller.xlsx"
 )
+
+# --- Interfaz web (Flask) ---
+# La exige solo la app web (se valida en apps/app_1.py), así main.py y los tests siguen andando sin ella.
+SECRET_KEY = os.environ.get("SECRET_KEY", "").strip()
+
+# Base de usuarios de auth-module: archivo SQLite separado del de stock.
+RUTA_BD_USUARIOS = os.environ.get("RUTA_BD_USUARIOS", "").strip() or str(
+    BASE_DIR / "data" / "usuarios.sqlite3"
+)
+
