@@ -6,7 +6,7 @@ Se realizan dos tipos de predicciones:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import Any, List, Dict
 import pandas as pd
 import numpy as np
 
