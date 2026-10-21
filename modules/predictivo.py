@@ -90,8 +90,11 @@ class PreprocesadorPredicciones:
     """Clase utilidad para estructurar y homogeneizar series temporales"""
 
     @staticmethod
-    def preparar_serie_mensual(df_movimientos: pd.DataFrame, repuesto_id: str, meses_historicos: int = 12) -> pd.Series:
-        """Filtra movimientos por repuestos, agrupa por mes y rellena vacios con cer"""
+    def preparar_serie_mensual(df_movimientos: pd.DataFrame, repuesto_id: str, meses_historicos: int = 12,
+                               fecha_referencia=None) -> pd.Series:
+        """Filtra movimientos por repuestos, agrupa por mes y rellena vacios con cer
+        fecha_referencia: ultimo mes de la serie (por defecto, el mes actual). Permite
+        que las pruebas no dependan del dia en que se ejecutan."""
         if df_movimientos.empty:
             return pd.Series(dtype = float)
         
@@ -105,7 +108,8 @@ class PreprocesadorPredicciones:
         serie_mensual = df_repuesto.set_index('fecha').resample('MS')['cantidad'].sum()
 
         #Ordenar para asegurar todos los periodos en le rango
-        fecha_fin = pd.Timestamp.now().to_period('M').to_timestamp()
+        referencia = pd.Timestamp(fecha_referencia) if fecha_referencia is not None else pd.Timestamp.now()
+        fecha_fin = referencia.to_period('M').to_timestamp()
         fecha_inicio = fecha_fin - pd.DateOffset(months = meses_historicos - 1)
 
         idx_completo = pd.date_range(start = fecha_inicio, end = fecha_fin, freq = 'MS')
@@ -129,9 +133,16 @@ class ResultadoPrediccion:
 class ServicioPrediccion:
     """Orquestador principal de las predicciones coordina lectura, prediccion y calculo de reabastecimiento."""
 
-    def __init__(self, gestor_bd):
-        """gestor_bd es instancia de GestorInventarioBD del crud.py"""
+    def __init__(self, gestor_bd, tipos_demanda=("INGRESO",), fecha_referencia=None):
+        """gestor_bd es instancia de GestorInventarioBD del crud.py
+        tipos_demanda: tipos de movimiento que cuentan como demanda. Por ahora
+        las compras (INGRESO), igual que EstimadorPorCompras de alertas.py,
+        porque todavia no hay usos (EGRESO) cargados. Los AJUSTE del conteo
+        no son demanda: son correcciones con signo.
+        fecha_referencia: hasta que mes se arma la serie (por defecto, hoy)."""
         self.gestor_bd = gestor_bd
+        self.tipos_demanda = tuple(tipos_demanda)
+        self.fecha_referencia = fecha_referencia
 
     def generar_predicciones_catalogo(self, meses_a_proyectar: int = 3) -> List[ResultadoPrediccion]:
         """Genera proyecciones y sugerencias para todo el catalogo activo"""
@@ -144,14 +155,19 @@ class ServicioPrediccion:
             df_movimientos = self.gestor_bd.obtener_todos_los_movimientos()
             df_catalogos = self.gestor_bd.obtener_catalogo_repuestos()
 
+        # Solo los movimientos que representan demanda (ver tipos_demanda)
+        if 'tipo' in df_movimientos.columns:
+            df_movimientos = df_movimientos[df_movimientos['tipo'].isin(self.tipos_demanda)]
+
         resultados = []
 
         for _, repuesto in df_catalogos.iterrows():
             # Convertir a int si es posible (como un "1" de SQLite), si no dejarlo como string ("REP-001"):
             r_id = int(repuesto['id']) if str(repuesto['id']).isdigit() else repuesto['id']
-            descripcion = repuesto.get('descripcion_normalizada', repuesto.get('descipcion', ''))
+            descripcion = repuesto.get('descripcion_normalizada', repuesto.get('descripcion', ''))
 
-            serie = PreprocesadorPredicciones.preparar_serie_mensual(df_movimientos, r_id)
+            serie = PreprocesadorPredicciones.preparar_serie_mensual(
+                df_movimientos, r_id, fecha_referencia=self.fecha_referencia)
             estrategia = PredictorDemandaFactory.obtener_estrategia(serie)
             proyeccion = estrategia.predecir(serie, meses_a_proyectar)
             

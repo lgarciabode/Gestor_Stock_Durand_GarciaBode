@@ -38,6 +38,8 @@ from modules.dashboard import DIAS_SIN_MOVIMIENTO, ConsultaDashboard
 from modules.crud import (AlertaNoEncontradaError, GestorInventarioBD,
                           RepositorioAlertas, RepuestoNoEncontradoError)
 from modules.modelos import EstadoStock
+from modules.plan_compras import HORIZONTES, PlanDeCompras
+from modules.predictivo import ServicioPrediccion
 from modules.movimientos import MovimientoInvalidoError, ServicioMovimientos
 from modules.proveedores import (ConsultaProveedores, ProveedorInvalidoError,
                                  ProveedorNoEncontradoError, ServicioProveedores)
@@ -613,6 +615,33 @@ def registrar_rutas(app: Flask) -> None:
             etiquetas=ETIQUETAS_ESTADO,
             clases_css=CLASE_CSS_ESTADO,
             Estado=EstadoStock,
+            texto_cantidad=texto_cantidad,
+        )
+
+    # ------------------------------------------------------------ Predicción
+
+    @app.route("/prediccion")
+    @login_required
+    def prediccion():
+        """Plan de compras: cuánto se va a necesitar y cuánto comprar en 30, 60 o 90 días."""
+        gestor = GestorInventarioBD(obtener_bd())
+        texto_horizonte = request.args.get("horizonte", "30")
+        horizonte = int(texto_horizonte) if texto_horizonte.isdigit() and int(texto_horizonte) in HORIZONTES else 30
+        ver_todos = request.args.get("todos") == "1"
+
+        plan = PlanDeCompras(gestor, ServicioPrediccion(gestor))
+        filas = plan.filas(horizonte, solo_a_comprar=not ver_todos)
+        a_comprar = filas if not ver_todos else [f for f in filas if f.a_comprar(horizonte) > 0]
+        periodo = gestor.obtener_periodo_movimientos()
+        return render_template(
+            "prediccion.html",
+            filas=filas,
+            horizonte=horizonte,
+            horizontes=HORIZONTES,
+            ver_todos=ver_todos,
+            total_a_comprar=len(a_comprar),
+            avance=ConsultaDashboard(obtener_bd(), gestor).avance_conteo(),
+            ultimo_dato=date.fromisoformat(periodo[1]).strftime("%d/%m/%Y") if periodo else None,
             texto_cantidad=texto_cantidad,
         )
 
