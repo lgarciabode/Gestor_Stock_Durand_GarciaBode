@@ -83,9 +83,10 @@ class PruebaRegistrarMovimientos(BaseMovimientos):
         self.assertEqual(resultado.repuesto.stock_actual, 1)
         self.assertEqual([a.tipo for a in resultado.alertas_nuevas], ["CRITICO"])
 
-    def test_conteo_que_coincide_no_guarda_movimiento(self):
+    def test_conteo_que_coincide_queda_registrado_con_diferencia_cero(self):
         resultado = self.servicio.registrar_conteo(self.rod_id, 10, HOY)
-        self.assertIsNone(resultado.movimiento_id)
+        self.assertIsNotNone(resultado.movimiento_id)
+        self.assertEqual(resultado.diferencia, 0)
 
     def test_en_centimetros_acepta_decimales(self):
         resultado = self.servicio.registrar_ingreso(self.cadena_id, 30.5, HOY)

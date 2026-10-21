@@ -9,6 +9,26 @@ class RepuestoNoEncontradoError(LookupError):
     """No existe un repuesto con ese id."""
 
 
+# Movimientos "vigentes": ni anulados ni anulaciones. Son los que cuentan como
+# historia real del repuesto (cálculo de umbrales, repuestos contados).
+_SOLO_VIGENTES = """anula_id IS NULL
+    AND id NOT IN (SELECT anula_id FROM movimientos_stock WHERE anula_id IS NOT NULL)"""
+
+
+def _fila_a_movimiento(f: sqlite3.Row) -> MovimientoStock:
+    return MovimientoStock(
+        id=f["id"],
+        repuesto_id=f["repuesto_id"],
+        fecha=f["fecha"],
+        tipo=f["tipo"],
+        cantidad=f["cantidad"],
+        proveedor_id=f["proveedor_id"],
+        codigo_proveedor_raw=f["codigo_proveedor_raw"],
+        origen=f["origen"],
+        anula_id=f["anula_id"],
+    )
+
+
 def _fila_a_repuesto(f: sqlite3.Row) -> Repuesto:
     """Convierte una fila de la tabla repuestos en un objeto Repuesto."""
     return Repuesto(
@@ -210,7 +230,7 @@ class GestorInventarioBD:
     def registrar_movimiento(self, mov: MovimientoStock) -> int:
         """Registra un movimiento de ingreso, egreso o ajuste"""
         cursor = self.conexion.execute(
-            """INSERT INTO movimientos_stock (repuesto_id, proveedor_id, fecha, tipo, cantidad, codigo_proveedor_raw, origen) VALUES (?,?,?,?,?,?,?)""",
+            """INSERT INTO movimientos_stock (repuesto_id, proveedor_id, fecha, tipo, cantidad, codigo_proveedor_raw, origen, anula_id) VALUES (?,?,?,?,?,?,?,?)""",
             (
                 mov.repuesto_id,
                 mov.proveedor_id,
@@ -219,51 +239,61 @@ class GestorInventarioBD:
                 mov.cantidad,
                 mov.codigo_proveedor_raw,
                 mov.origen,
+                mov.anula_id,
             ),
         )
         self.conexion.commit()
         return cursor.lastrowid
 
-    def registrar_conteo(self, repuesto_id: int, cantidad_contada: float, fecha: str) -> Optional[int]:
+    def registrar_conteo(self, repuesto_id: int, cantidad_contada: float, fecha: str) -> MovimientoStock:
         """Registra un conteo físico: deja el stock igual a lo que hay en el estante.
 
         Quien usa el sistema escribe lo que CONTÓ (ej. "hay 12"); la diferencia
         con el stock del sistema la calcula el Repuesto y se guarda como un
         movimiento de AJUSTE. Así no se reescribe ningún movimiento anterior y
-        queda registrado cuándo y cuánto se corrigió.
+        queda registrado cuándo y cuánto se corrigió. Si coincidía, se guarda un
+        AJUSTE de 0: deja constancia de que el repuesto ya se contó.
 
         Pre:  el repuesto existe, si no RepuestoNoEncontradoError; la cantidad
               es válida, si no ConteoInvalidoError (ver Repuesto.ajuste_por_conteo).
-        Post: stock_actual == cantidad_contada. Devuelve el id del AJUSTE, o
-              None si no había diferencia (no se guarda nada).
+        Post: stock_actual == cantidad_contada. Devuelve el AJUSTE guardado (con su id).
         """
         rep = self.obtener_repuesto_id(repuesto_id)
         if rep is None:
             raise RepuestoNoEncontradoError(f"No existe el repuesto con id {repuesto_id}.")
         ajuste = rep.ajuste_por_conteo(cantidad_contada, fecha)
-        if ajuste is None:
-            return None
-        return self.registrar_movimiento(ajuste)
+        ajuste.id = self.registrar_movimiento(ajuste)
+        return ajuste
+
+    def obtener_repuestos_contados(self) -> List[Repuesto]:
+        """Repuestos activos que ya se contaron al menos una vez (tienen algún AJUSTE).
+        Son los únicos con stock confiable mientras no se termine el conteo inicial."""
+        filas = self.conexion.execute(
+            f"""SELECT * FROM repuestos WHERE activo = 1 AND id IN
+               (SELECT DISTINCT repuesto_id FROM movimientos_stock WHERE tipo = 'AJUSTE' AND {_SOLO_VIGENTES})"""
+        ).fetchall()
+        return [_fila_a_repuesto(f) for f in filas]
 
     def obtener_movimientos(self, repuesto_id: int) -> List[MovimientoStock]:
-        """Todos los movimientos de un repuesto, del mas viejo al mas nuevo.
-        Es la entrada del calculo de umbrales (modules/alertas.py)."""
+        """Los movimientos vigentes de un repuesto, del mas viejo al mas nuevo.
+        Es la entrada del calculo de umbrales (modules/alertas.py): no incluye
+        los anulados ni sus anulaciones (una compra cargada por error no es
+        una compra)."""
         filas = self.conexion.execute(
-            "SELECT * FROM movimientos_stock WHERE repuesto_id = ? ORDER BY fecha, id", (repuesto_id,)
+            f"SELECT * FROM movimientos_stock WHERE repuesto_id = ? AND {_SOLO_VIGENTES} ORDER BY fecha, id",
+            (repuesto_id,),
         ).fetchall()
-        return [
-            MovimientoStock(
-                id=f["id"],
-                repuesto_id=f["repuesto_id"],
-                fecha=f["fecha"],
-                tipo=f["tipo"],
-                cantidad=f["cantidad"],
-                proveedor_id=f["proveedor_id"],
-                codigo_proveedor_raw=f["codigo_proveedor_raw"],
-                origen=f["origen"],
-            )
-            for f in filas
-        ]
+        return [_fila_a_movimiento(f) for f in filas]
+
+    def obtener_movimiento(self, movimiento_id: int) -> Optional[MovimientoStock]:
+        """Un movimiento por su id (sea vigente, anulado o anulación)."""
+        f = self.conexion.execute("SELECT * FROM movimientos_stock WHERE id = ?", (movimiento_id,)).fetchone()
+        return _fila_a_movimiento(f) if f else None
+
+    def esta_anulado(self, movimiento_id: int) -> bool:
+        return self.conexion.execute(
+            "SELECT 1 FROM movimientos_stock WHERE anula_id = ?", (movimiento_id,)
+        ).fetchone() is not None
 
     def obtener_periodo_movimientos(self) -> Optional[tuple]:
         """Fecha del primer y del ultimo movimiento registrado (texto ISO), o None si no hay."""

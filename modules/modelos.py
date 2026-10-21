@@ -156,7 +156,7 @@ class Repuesto:
 
     # --- Conteo físico ----------------------------------------------------
 
-    def ajuste_por_conteo(self, cantidad_contada: float, fecha: str) -> Optional["MovimientoStock"]:
+    def ajuste_por_conteo(self, cantidad_contada: float, fecha: str) -> "MovimientoStock":
         """Arma el AJUSTE que deja el stock del sistema igual a lo contado en el estante.
 
         El Repuesto es quien conoce su stock_actual, por eso sabe calcular la
@@ -166,9 +166,10 @@ class Repuesto:
         Pre:  el repuesto ya está guardado (tiene id), si no RepuestoInvalidoError;
               cantidad_contada >= 0 y, si la unidad es "unidad", sin decimales;
               si no, ConteoInvalidoError.
-        Post: si lo contado coincide con el stock devuelve None (no hay nada que corregir);
-              si no, un MovimientoStock de tipo AJUSTE con
-              cantidad = contado - stock_actual (negativa si falta, positiva si sobra).
+        Post: un MovimientoStock de tipo AJUSTE con
+              cantidad = contado - stock_actual (negativa si falta, positiva si sobra,
+              0 si coincide: igual se registra, porque deja constancia de que el
+              repuesto se contó y su stock es real).
               No modifica el repuesto: el stock lo actualiza la base al guardar el movimiento.
         """
         if self.id is None:
@@ -180,9 +181,7 @@ class Repuesto:
                 f"Este repuesto se cuenta por unidad: la cantidad no puede tener decimales (se recibió {cantidad_contada})."
             )
         # round(…, 6): evita diferencias fantasma de punto flotante (ej. 0.1 + 0.2 - 0.3)
-        diferencia = round(cantidad_contada - self.stock_actual, 6)
-        if diferencia == 0:
-            return None
+        diferencia = round(cantidad_contada - self.stock_actual, 6) or 0.0  # "or 0.0" evita un -0.0
         return MovimientoStock(id=None, repuesto_id=self.id, fecha=fecha, tipo="AJUSTE", cantidad=diferencia)
 
 
@@ -220,6 +219,7 @@ class MovimientoStock:
     proveedor_id: Optional[int] = None  # solo tiene sentido en INGRESO
     codigo_proveedor_raw: Optional[str] = None
     origen: str = "manual"  # "carga_inicial" | "manual"
+    anula_id: Optional[int] = None  # si es la anulación de otro movimiento, su id
 
 
 @dataclass

@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 {% block titulo %}Registrar movimiento{% endblock %}
 {% block encabezado %}Registrar movimiento{% endblock %}
-{% block subtitulo %}Cargá lo que se usó, lo que llegó o lo que hay en el estante{% endblock %}
+{% block subtitulo %}Cargá lo que se usó, lo que llegó o el stock disponible{% endblock %}
 
 {% block contenido %}
 {% if error %}
@@ -65,7 +65,7 @@
     function actualizar() {
       const tipo = document.querySelector('input[name="tipo"]:checked').value;
       proveedor.hidden = tipo !== 'ingreso';
-      etiqueta.textContent = tipo === 'conteo' ? '¿Cuántos hay en el estante?' : 'Cantidad';
+      etiqueta.textContent = tipo === 'conteo' ? 'Stock disponible' : 'Cantidad';
     }
     radios.forEach(r => r.addEventListener('change', actualizar));
     actualizar();

@@ -56,7 +56,7 @@ package "Modelo de Dominio (modules/modelos.py)" {
         +tiene_sobrestock(): bool
         +calcular_sugerencia_compra(): float
         +estado(): EstadoStock
-        +ajuste_por_conteo(cantidad_contada: float, fecha: str): Optional<MovimientoStock>
+        +ajuste_por_conteo(cantidad_contada: float, fecha: str): MovimientoStock
     }
 
     enum EstadoStock {
@@ -78,6 +78,7 @@ package "Modelo de Dominio (modules/modelos.py)" {
         +proveedor_id: Optional<int>
         +codigo_proveedor_raw: Optional<str>
         +origen: str
+        +anula_id: Optional<int>
     }
 
     class Alerta {
@@ -110,7 +111,10 @@ package "Capa de Persistencia (modules/crud.py)" {
         +obtener_repuestos_bajo_reorden(): List<Repuesto>
         +registrar_movimiento(mov: MovimientoStock): int
         +obtener_movimientos(repuesto_id: int): List<MovimientoStock>
-        +registrar_conteo(repuesto_id: int, cantidad_contada: float, fecha: str): Optional<int>
+        +obtener_movimiento(movimiento_id: int): Optional<MovimientoStock>
+        +esta_anulado(movimiento_id: int): bool
+        +registrar_conteo(repuesto_id: int, cantidad_contada: float, fecha: str): MovimientoStock
+        +obtener_repuestos_contados(): List<Repuesto>
     }
 
     class RepositorioAlertas {
@@ -279,12 +283,14 @@ package "Movimientos del día a día (modules/movimientos.py)" {
         +registrar_ingreso(repuesto_id: int, cantidad: float, fecha: str, proveedor_id: Optional<int>): ResultadoMovimiento
         +registrar_egreso(repuesto_id: int, cantidad: float, fecha: str): ResultadoMovimiento
         +registrar_conteo(repuesto_id: int, cantidad_contada: float, fecha: str): ResultadoMovimiento
+        +anular(movimiento_id: int): ResultadoMovimiento
     }
 
     class ResultadoMovimiento {
-        +movimiento_id: Optional<int>
+        +movimiento_id: int
         +repuesto: Repuesto
         +alertas_nuevas: List<Alerta>
+        +diferencia: Optional<float>
     }
 }
 
@@ -306,6 +312,9 @@ package "Historial y descargas (modules/reportes.py)" {
         +cantidad: float
         +unidad_medida: str
         +proveedor: str
+        +anula_id: Optional<int>
+        +anulado: bool
+        +vigente(): bool
         +como_tupla(): tuple
     }
 

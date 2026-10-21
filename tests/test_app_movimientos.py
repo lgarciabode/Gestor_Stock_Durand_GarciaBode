@@ -90,7 +90,9 @@ class PruebaPantallaMovimientos(unittest.TestCase):
     def test_el_formulario_ofrece_los_repuestos_para_reconocer(self):
         html = self.cliente.get("/movimientos/nuevo").get_data(as_text=True)
         self.assertIn(f'<option value="{OPCION_6204}">', html)
-        self.assertIn("Quitar (se usó)", html)
+        self.assertIn("Quitar", html)
+        self.assertIn("Stock disponible", html)
+        self.assertNotIn("(se usó)", html)
         self.assertIn(f'max="{HOY}"', html)  # no deja elegir fechas futuras
         self.assertIn("Iriondo", html)
 
@@ -105,6 +107,10 @@ class PruebaPantallaMovimientos(unittest.TestCase):
         self.assertEqual(respuesta.request.path, "/movimientos/nuevo")
         self.assertIn("Se quitaron 4 unidades de 6204 2RS. Ahora hay 6 unidades.", html)
         self.assertEqual(self.repuesto().stock_actual, 6)
+
+    def test_mensaje_en_singular(self):
+        html = self.enviar(tipo="egreso", cantidad="1").get_data(as_text=True)
+        self.assertIn("Se quitó 1 unidad de 6204 2RS. Ahora hay 9 unidades.", html)
 
     def test_quitar_hasta_el_reorden_avisa_y_crea_la_alerta(self):
         html = self.enviar(tipo="egreso", cantidad="7").get_data(as_text=True)

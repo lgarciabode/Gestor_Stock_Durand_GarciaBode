@@ -1,6 +1,6 @@
 # 🔔 Módulo de alertas — análisis y diseño
 
-> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6 a 11 — conteo físico, conteo inicial con planilla, pantalla de alertas, registro de movimientos, historial y catálogo — hechos el 20/10/2026).
+> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6 a 12 — conteo físico, conteo inicial, pantalla de alertas, registro de movimientos, historial, catálogo y anulación de movimientos — hechos el 20/10/2026).
 > Diagrama de clases: `docs/diagrama_UML.md` (sección 2) y `docs/diagramaUML.puml`.
 
 El módulo avisa cuándo hay que reponer un repuesto, cuándo está en riesgo de faltar y cuándo hay stock de más. Cada repuesto tiene **sus propios umbrales**, calculados a partir de cuánto se usa: un mismo stock mínimo para todos no sirve (lo mostró el EDA, `templates/eda_repuestos.ipynb`).
@@ -172,7 +172,7 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
 
     6. ~~Conteo físico~~ (20/10): `Repuesto.ajuste_por_conteo` y `ConteoInvalidoError` en `modules/modelos.py`; `GestorInventarioBD.registrar_conteo` y `RepuestoNoEncontradoError` en `modules/crud.py`. Pruebas: `tests/test_conteo.py` (19 pruebas, incluye el 6204 con datos reales).
 
-        Quien usa el sistema escribe **lo que contó** en el estante ("hay 3"). El `Repuesto`, que conoce su `stock_actual`, calcula la diferencia (3 − 55 = −52) y arma un movimiento de **AJUSTE**; el gestor lo guarda y el trigger deja `stock_actual = 3`. No se reescribe ningún movimiento: queda registrado cuándo y cuánto se corrigió. Si lo contado coincide, no se guarda nada.
+        Quien usa el sistema escribe **lo que contó** en el estante ("hay 3"). El `Repuesto`, que conoce su `stock_actual`, calcula la diferencia (3 − 55 = −52) y arma un movimiento de **AJUSTE**; el gestor lo guarda y el trigger deja `stock_actual = 3`. No se reescribe ningún movimiento: queda registrado cuándo y cuánto se corrigió. Si lo contado coincide se guarda un **AJUSTE de 0** (cambio del 20/10): deja constancia de que el repuesto ya se contó y su stock es real.
 
         ```python
         gestor.registrar_conteo(repuesto_id, cantidad_contada=3, fecha="2026-10-20")
@@ -204,13 +204,13 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
         |---|---|
         | `GET /alertas` | Lista las alertas abiertas, lo más urgente primero: aviso, repuesto (código, marca, categoría), detalle, desde cuándo y el botón. Debajo, desplegable con los repuestos "sin datos todavía" (sin umbrales: no pueden generar alertas). |
         | `POST /alertas/<id>/atendida` | Botón **"Ya lo pedí"** (en "Sobra stock" dice **"Entendido"**, porque no hay nada que pedir). Cierra la alerta; queda en el historial. |
-        | `POST /alertas/revisar` | Botón **"Revisar todo"**: aplica las reglas a todos los repuestos activos sin duplicar las abiertas. |
+        | `POST /alertas/revisar` | Botón **"Revisar todo"**: aplica las reglas a los **repuestos ya contados** (con al menos un AJUSTE), sin duplicar las abiertas, y avisa cuántos faltan contar. |
 
         - La capa de presentación no decide nada del negocio: le pide los datos a `RepositorioAlertas`, `MotorAlertas` y `GestorInventarioBD` y los muestra (arquitectura en capas).
         - Las acciones son `POST` y después redirigen a la lista (patrón POST → redirect → GET): recargar la página no repite la acción, y un link no puede cerrar una alerta por accidente.
         - Cada acción confirma con un mensaje (flash), y el menú muestra cuántas alertas hay sin atender.
 
-        > **Cuidado:** hasta que se haga el conteo inicial, "Revisar todo" genera alertas falsas (con el histórico, 31), porque el stock de los repuestos no contados es la suma de todas las compras.
+        > **Decisión del equipo (20/10):** "Revisar todo" revisa solo los repuestos ya contados. Los demás tienen el stock "inflado" de la carga histórica y darían alertas falsas (con el histórico, 31). Para saber cuáles se contaron, todo conteo queda registrado como AJUSTE, aunque la diferencia sea 0 (`GestorInventarioBD.obtener_repuestos_contados`).
 
     9. ~~Registrar movimiento~~ (20/10): `modules/movimientos.py` (`ServicioMovimientos`, `ResultadoMovimiento`, `MovimientoInvalidoError`), ruta `GET/POST /movimientos/nuevo` y template `templates/registrar_movimiento.html`. Pruebas: `tests/test_movimientos.py` (15) y `tests/test_app_movimientos.py` (11, se saltean sin Flask).
 
@@ -235,4 +235,18 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
         - Reglas (`CatalogoInvalidoError`): no se repite marca + código; código y marca no se editan (son su identidad); **solo se inactiva un repuesto sin stock** (el botón aparece deshabilitado si tiene); umbrales coherentes (mínimo ≤ reorden ≤ máximo).
         - Después de fijar umbrales, activar o volver al automático se revisan las alertas de ese repuesto.
 
-    12. Pendiente: conteo real en el taller; pantallas "Proveedores" y "Dashboard"; decidir con Lucía si "Revisar todo" revisa solo los repuestos ya contados.
+    12. ~~Anular movimientos y paginar el historial~~ (20/10): `ServicioMovimientos.anular`, columna `anula_id` en `movimientos_stock` (con migración `_migrar()` en `modules/base_datos.py` para bases existentes), ruta `GET/POST /movimientos/<id>/anular` y template `anular_movimiento.html`; historial de 50 en 50. Pruebas: `tests/test_anular_movimientos.py` (11) y 6 más en `tests/test_app_historial.py`.
+
+        - **Un movimiento nunca se borra ni se edita.** Si se cargó por error, se **anula**: se registra, con fecha de hoy, un AJUSTE con el efecto contrario que lo referencia (`anula_id`). Los dos quedan en el historial ("… (anulado)" tachado y "Anulación" en cursiva). Si había que cargar otra cantidad, después se carga el movimiento correcto.
+        - Antes de anular se muestra una pantalla de confirmación con el movimiento y su efecto contrario (no un cartel del navegador).
+        - Contrato (`MovimientoInvalidoError`): existe; no es una anulación; no estaba anulado; repuesto activo; no deja el stock en negativo (si esas unidades ya se usaron, corresponde un conteo). Invariante en la base: índice único parcial `idx_movimientos_anula_unica` (un movimiento se anula una sola vez).
+        - Lo anulado **no cuenta**: `obtener_movimientos` (entrada del cálculo de umbrales) y `obtener_repuestos_contados` solo ven movimientos vigentes. Una compra cargada por error no infla los umbrales, y una anulación no marca un repuesto como contado.
+        - **Migración:** `CREATE TABLE IF NOT EXISTS` no agrega columnas a una tabla existente. `_migrar()` agrega `anula_id` solo si falta, sin perder datos, y se puede correr muchas veces. La base del taller se actualiza sola al abrir la app.
+        - Paginación: 50 por página ("Más nuevos" / "Más viejos"), conservando el filtro. Las descargas llevan todo lo filtrado.
+
+    13. ~~Ajustes de la interfaz~~ (20/10, pedidos de Cami):
+        - **Umbrales al arrancar:** `actualizar_umbrales()` en `apps/app_1.py` recalcula los umbrales de todos los repuestos con compras cada vez que se abre la app (los corregidos a mano no se tocan). Antes solo se calculaban al aplicar el conteo inicial, y en la base real todos figuraban "Sin datos todavía". Hasta que se cuenten, el estado de cada repuesto se calcula con el stock "inflado" de la carga histórica.
+        - **Textos:** las opciones de "Registrar movimiento" son "Quitar", "Agregar" y "Stock disponible" (sin aclaraciones entre paréntesis); en el historial y las descargas, "Agregar", "Quitar", "Conteo" y "… · anulado".
+        - **Filtros:** fila flexible (se acomoda al ancho y baja de renglón si no entra); las tablas se desplazan dentro del panel en pantallas angostas.
+
+    14. Pendiente: conteo real en el taller; pantallas "Proveedores" y "Dashboard".

@@ -21,8 +21,8 @@ from modules.modelos import TIPOS_MOVIMIENTO
 
 # Palabras del taller para cada tipo de movimiento (las mismas del formulario).
 ETIQUETAS_TIPO_MOVIMIENTO = {
-    "INGRESO": "Agregar (compra)",
-    "EGRESO": "Quitar (uso)",
+    "INGRESO": "Agregar",
+    "EGRESO": "Quitar",
     "AJUSTE": "Conteo",
 }
 
@@ -55,7 +55,7 @@ class FiltroMovimientos:
             raise FiltroInvalidoError(f"Tipo de movimiento desconocido: {self.tipo}.")
 
     def descripcion(self) -> str:
-        """Texto para el encabezado de los archivos: "Del 01/10/2026 al 20/10/2026 · Quitar (uso)"."""
+        """Texto para el encabezado de los archivos: "Del 01/10/2026 al 20/10/2026 · Quitar"."""
         texto = f"Del {_fecha_ar(self.desde)} al {_fecha_ar(self.hasta)}"
         if self.tipo:
             texto += f" · {ETIQUETAS_TIPO_MOVIMIENTO[self.tipo]}"
@@ -74,10 +74,20 @@ class FilaReporte:
     cantidad: float
     unidad_medida: str
     proveedor: str
+    anula_id: Optional[int] = None   # es la anulación de otro movimiento
+    anulado: bool = False            # este movimiento fue anulado
+
+    @property
+    def vigente(self) -> bool:
+        """Ni anulado ni anulación: cuenta como historia real del repuesto."""
+        return self.anula_id is None and not self.anulado
 
     @property
     def tipo_texto(self) -> str:
-        return ETIQUETAS_TIPO_MOVIMIENTO[self.tipo]
+        if self.anula_id is not None:
+            return "Anulación"
+        texto = ETIQUETAS_TIPO_MOVIMIENTO[self.tipo]
+        return f"{texto} · anulado" if self.anulado else texto
 
     @property
     def fecha_texto(self) -> str:
@@ -87,6 +97,8 @@ class FilaReporte:
     def cantidad_texto(self) -> str:
         """Ingresos con +, egresos con −, conteos con el signo de la corrección."""
         numero = f"{abs(self.cantidad):g}".replace(".", ",")
+        if self.cantidad == 0:
+            return "0"  # conteo que coincidía con el sistema
         if self.tipo == "INGRESO" or (self.tipo == "AJUSTE" and self.cantidad > 0):
             return f"+{numero}"
         return f"-{numero}"
@@ -120,7 +132,8 @@ class ConsultaMovimientos:
             condiciones.append("m.repuesto_id = ?")
             parametros.append(filtro.repuesto_id)
         consulta = f"""
-            SELECT m.id, m.fecha, m.tipo, m.cantidad,
+            SELECT m.id, m.fecha, m.tipo, m.cantidad, m.anula_id,
+                   EXISTS (SELECT 1 FROM movimientos_stock x WHERE x.anula_id = m.id) AS anulado,
                    r.codigo, r.unidad_medida,
                    ma.nombre AS marca, c.nombre AS categoria,
                    COALESCE(p.nombre, '') AS proveedor
@@ -134,16 +147,21 @@ class ConsultaMovimientos:
         return [
             FilaReporte(id=f["id"], fecha=f["fecha"], tipo=f["tipo"], codigo=f["codigo"], marca=f["marca"],
                         categoria=f["categoria"], cantidad=f["cantidad"], unidad_medida=f["unidad_medida"],
-                        proveedor=f["proveedor"])
+                        proveedor=f["proveedor"], anula_id=f["anula_id"], anulado=bool(f["anulado"]))
             for f in self.conexion.execute(consulta, parametros).fetchall()
         ]
 
 
 def contar_por_tipo(filas: List[FilaReporte]) -> Dict[str, int]:
-    """Cuántos movimientos hay de cada tipo (no se suman cantidades: mezclan unidades y cm)."""
+    """Cuántos movimientos vigentes hay de cada tipo, y cuántos se anularon
+    (clave "ANULADOS"). No se suman cantidades: mezclan unidades y cm."""
     conteo = {tipo: 0 for tipo in TIPOS_MOVIMIENTO}
+    conteo["ANULADOS"] = 0
     for fila in filas:
-        conteo[fila.tipo] += 1
+        if fila.anulado:
+            conteo["ANULADOS"] += 1
+        elif fila.vigente:
+            conteo[fila.tipo] += 1
     return conteo
 
 

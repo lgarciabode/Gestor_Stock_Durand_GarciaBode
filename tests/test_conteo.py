@@ -66,8 +66,11 @@ class PruebaAjustePorConteo(unittest.TestCase):
     def test_si_sobra_stock_el_ajuste_es_positivo(self):
         self.assertEqual(repuesto(stock=2).ajuste_por_conteo(5, HOY).cantidad, 3)
 
-    def test_si_coincide_no_hay_nada_que_ajustar(self):
-        self.assertIsNone(repuesto(stock=7).ajuste_por_conteo(7, HOY))
+    def test_si_coincide_el_ajuste_es_cero(self):
+        # Igual se registra: deja constancia de que el repuesto ya se contó
+        ajuste = repuesto(stock=7).ajuste_por_conteo(7, HOY)
+        self.assertEqual((ajuste.tipo, ajuste.cantidad), ("AJUSTE", 0))
+        self.assertEqual(str(ajuste.cantidad), "0.0")  # no "-0.0"
 
     def test_contar_cero_es_valido(self):
         # Limite: se acabo el repuesto
@@ -92,7 +95,7 @@ class PruebaAjustePorConteo(unittest.TestCase):
 
     def test_sin_diferencias_fantasma_de_punto_flotante(self):
         # 0.1 + 0.2 da 0.30000000000000004: igual tiene que considerarse "coincide"
-        self.assertIsNone(repuesto(stock=0.1 + 0.2, unidad="cm").ajuste_por_conteo(0.3, HOY))
+        self.assertEqual(repuesto(stock=0.1 + 0.2, unidad="cm").ajuste_por_conteo(0.3, HOY).cantidad, 0)
 
     def test_repuesto_sin_guardar_no_se_puede_contar(self):
         with self.assertRaises(RepuestoInvalidoError):
@@ -134,10 +137,10 @@ class PruebaRegistrarConteo(BaseTemporal):
         self.mover("INGRESO", 55)
 
         # Act: en el estante hay 3
-        movimiento_id = self.gestor.registrar_conteo(self.repuesto_id, 3, HOY)
+        ajuste = self.gestor.registrar_conteo(self.repuesto_id, 3, HOY)
 
         # Assert
-        self.assertIsNotNone(movimiento_id)
+        self.assertIsNotNone(ajuste.id)
         self.assertEqual(self.stock(), 3)
 
     def test_queda_guardado_como_ajuste_sin_tocar_los_movimientos_anteriores(self):
@@ -148,13 +151,27 @@ class PruebaRegistrarConteo(BaseTemporal):
 
         self.assertEqual([(m.tipo, m.cantidad) for m in movimientos], [("INGRESO", 55), ("AJUSTE", -52)])
 
-    def test_si_coincide_no_guarda_nada(self):
+    def test_si_coincide_guarda_un_ajuste_de_cero(self):
         self.mover("INGRESO", 10)
 
-        resultado = self.gestor.registrar_conteo(self.repuesto_id, 10, HOY)
+        ajuste = self.gestor.registrar_conteo(self.repuesto_id, 10, HOY)
 
-        self.assertIsNone(resultado)
-        self.assertEqual(len(self.gestor.obtener_movimientos(self.repuesto_id)), 1)
+        self.assertIsNotNone(ajuste.id)
+        self.assertEqual([(m.tipo, m.cantidad) for m in self.gestor.obtener_movimientos(self.repuesto_id)],
+                         [("INGRESO", 10), ("AJUSTE", 0)])
+        self.assertEqual(self.stock(), 10)
+
+    def test_contados_son_los_que_tienen_algun_ajuste(self):
+        # Arrange: un segundo repuesto que no se cuenta
+        otro = self.gestor.crear_repuestos(Repuesto(id=None, codigo="OTRO", marca_id=1, categoria_id=1))
+        self.mover("INGRESO", 10)
+        self.gestor.registrar_movimiento(MovimientoStock(id=None, repuesto_id=otro, fecha=HOY, tipo="INGRESO", cantidad=5))
+
+        # Act: se cuenta solo el primero, y coincide
+        self.gestor.registrar_conteo(self.repuesto_id, 10, HOY)
+
+        # Assert
+        self.assertEqual([r.id for r in self.gestor.obtener_repuestos_contados()], [self.repuesto_id])
 
     def test_repuesto_inexistente(self):
         with self.assertRaises(RepuestoNoEncontradoError):

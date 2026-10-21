@@ -69,7 +69,11 @@ CREATE TABLE IF NOT EXISTS movimientos_stock (
     tipo TEXT NOT NULL CHECK (tipo IN ('INGRESO', 'EGRESO', 'AJUSTE')),
     cantidad REAL NOT NULL,
     codigo_proveedor_raw TEXT,  -- trazabilidad opcional 
-    origen TEXT NOT NULL DEFAULT 'manual' CHECK (origen IN ('carga_inicial', 'manual'))
+    origen TEXT NOT NULL DEFAULT 'manual' CHECK (origen IN ('carga_inicial', 'manual')),
+    -- Si este movimiento ANULA a otro (cargado por error), su id. Un movimiento
+    -- nunca se borra ni se edita: se compensa con un AJUSTE inverso que lo
+    -- referencia. Ver _migrar() para bases creadas antes de esta columna.
+    anula_id INTEGER REFERENCES movimientos_stock(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_movimientos_repuesto_fecha
@@ -156,7 +160,25 @@ def obtener_conexion(ruta_bd: str) -> sqlite3.Connection:
 
 def crear_esquema(conexion: sqlite3.Connection) -> None:
     conexion.executescript(ESQUEMA_SQL)
+    _migrar(conexion)
     conexion.commit()
+
+
+def _migrar(conexion: sqlite3.Connection) -> None:
+    """Actualiza bases creadas con una versión anterior del esquema.
+
+    `CREATE TABLE IF NOT EXISTS` no agrega columnas a una tabla que ya existe,
+    así que las columnas nuevas se agregan acá, solo si faltan (se puede correr
+    muchas veces sin problema). No se pierde ningún dato.
+    """
+    columnas = {fila[1] for fila in conexion.execute("PRAGMA table_info(movimientos_stock)")}
+    if "anula_id" not in columnas:
+        conexion.execute("ALTER TABLE movimientos_stock ADD COLUMN anula_id INTEGER REFERENCES movimientos_stock(id)")
+    # Invariante: un movimiento se anula una sola vez.
+    conexion.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_movimientos_anula_unica
+           ON movimientos_stock (anula_id) WHERE anula_id IS NOT NULL"""
+    )
 
 
 def _carga_inicial_completa(conexion: sqlite3.Connection) -> bool:

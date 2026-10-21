@@ -263,7 +263,7 @@ class ServicioConteoInicial:
                 resultado.sin_contar += 1
                 continue
             contados.append(f.repuesto_id)
-            if self._gestor.registrar_conteo(f.repuesto_id, f.cantidad_contada, fecha) is None:
+            if self._gestor.registrar_conteo(f.repuesto_id, f.cantidad_contada, fecha).cantidad == 0:
                 resultado.sin_diferencia += 1
             else:
                 resultado.ajustados += 1

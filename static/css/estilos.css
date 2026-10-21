@@ -147,7 +147,11 @@ details summary { cursor: pointer; }
 .aviso-alerta { background: var(--cobrizo-100); color: var(--cobrizo-700); }
 
 /* ---------- Historial de movimientos ---------- */
-.filtros { display: grid; grid-template-columns: 150px 150px 190px 1fr auto; gap: 14px; align-items: end; }
+/* Fila flexible: se acomoda al ancho de la ventana y, si no entra, pasa a otro renglón */
+.filtros { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.filtros > .campo { flex: 1 1 150px; min-width: 0; }
+.filtros > .campo-ancho, .filtros-catalogo > .campo:first-child { flex: 2 1 220px; }
+.filtros > .opcion, .filtros-botones { flex: 0 0 auto; }
 .filtros-botones { display: flex; gap: 12px; align-items: center; }
 .enlace { color: var(--pino-700); font-weight: 600; }
 a.boton { text-decoration: none; display: inline-block; }
@@ -158,9 +162,18 @@ a.boton { text-decoration: none; display: inline-block; }
 .cantidad-ajuste { color: var(--plomo-700); font-weight: 600; }
 
 /* ---------- Catálogo ---------- */
-.filtros-catalogo { grid-template-columns: 1fr 190px 190px auto auto; }
-.opcion-chica { padding: 9px 12px; font-size: 13px; }
+.opcion-chica { padding: 9px 12px; font-size: 13px; white-space: nowrap; }
 .columnas { display: grid; grid-template-columns: 3fr 2fr; gap: 20px; align-items: start; }
 .boton:disabled { opacity: .45; cursor: not-allowed; }
 .columnas > * { min-width: 0; }
 .panel h2 + form, .panel form + h2 { margin-top: 4px; }
+
+/* ---------- Anulaciones y paginación ---------- */
+.tabla tr.anulado td { color: var(--plomo-500); }
+.tabla tr.anulado td:nth-child(4) { text-decoration: line-through; }
+.tabla tr.anulacion td { color: var(--plomo-500); font-style: italic; }
+.enlace-chico { font-size: 13px; }
+.paginacion { display: flex; justify-content: center; align-items: center; gap: 18px; padding-top: 8px; }
+
+/* En pantallas angostas la tabla se desplaza dentro del panel en vez de salirse */
+.panel { overflow-x: auto; }

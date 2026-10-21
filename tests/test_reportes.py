@@ -39,7 +39,7 @@ class PruebaFiltro(unittest.TestCase):
 
     def test_filtro_valido_y_su_descripcion(self):
         filtro = FiltroMovimientos("2026-10-01", "2026-10-20", "EGRESO")
-        self.assertEqual(filtro.descripcion(), "Del 01/10/2026 al 20/10/2026 · Quitar (uso)")
+        self.assertEqual(filtro.descripcion(), "Del 01/10/2026 al 20/10/2026 · Quitar")
 
     def test_un_solo_dia_es_valido(self):
         FiltroMovimientos("2026-10-20", "2026-10-20")  # limite: no lanza
@@ -103,14 +103,14 @@ class PruebaConsulta(BaseReportes):
     def test_trae_nombres_y_textos_para_mostrar(self):
         compra = self.consulta.buscar(FiltroMovimientos("2026-10-02", "2026-10-02"))[0]
         self.assertEqual(compra.como_tupla(),
-                         ("02/10/2026", "Agregar (compra)", "6204 2RS", "ZKL", "RODAMIENTO", "+5", "unidad", "Iriondo"))
+                         ("02/10/2026", "Agregar", "6204 2RS", "ZKL", "RODAMIENTO", "+5", "unidad", "Iriondo"))
 
     def test_signo_de_la_cantidad(self):
         textos = {f.tipo: f.cantidad_texto for f in self.consulta.buscar(self.octubre) if f.codigo == "6204 2RS"}
         self.assertEqual(textos, {"INGRESO": "+5", "EGRESO": "-3", "AJUSTE": "-2"})
 
     def test_contar_por_tipo(self):
-        self.assertEqual(contar_por_tipo(self.consulta.buscar(self.octubre)), {"INGRESO": 2, "EGRESO": 1, "AJUSTE": 1})
+        self.assertEqual(contar_por_tipo(self.consulta.buscar(self.octubre)), {"INGRESO": 2, "EGRESO": 1, "AJUSTE": 1, "ANULADOS": 0})
 
 
 class PruebaExportadores(BaseReportes):

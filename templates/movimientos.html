@@ -52,21 +52,22 @@
 {% if not error %}
 <section class="panel">
   <p class="resumen">
-    <strong>{{ filas|length }} {{ "movimiento" if filas|length == 1 else "movimientos" }}</strong>
+    <strong>{{ total }} {{ "movimiento" if total == 1 else "movimientos" }}</strong>
     {% for valor, texto in tipos.items() %}
       <span class="secundario"> · {{ texto }}: {{ conteo[valor] }}</span>
     {% endfor %}
+    {% if conteo.ANULADOS %}<span class="secundario"> · Anulados: {{ conteo.ANULADOS }}</span>{% endif %}
   </p>
   {% if filas %}
     <table class="tabla">
       <thead>
         <tr>
-          <th>Fecha</th><th>Movimiento</th><th>Repuesto</th><th class="numero">Cantidad</th><th>Proveedor</th>
+          <th>Fecha</th><th>Movimiento</th><th>Repuesto</th><th class="numero">Cantidad</th><th>Proveedor</th><th></th>
         </tr>
       </thead>
       <tbody>
         {% for fila in filas %}
-          <tr>
+          <tr class="{{ 'anulado' if fila.anulado }}{{ 'anulacion' if fila.anula_id }}">
             <td class="fecha">{{ fila.fecha_texto }}</td>
             <td>{{ fila.tipo_texto }}</td>
             <td>
@@ -75,10 +76,23 @@
             </td>
             <td class="numero cantidad-{{ fila.tipo|lower }}">{{ fila.cantidad_texto }}{% if fila.unidad_medida == 'cm' %} cm{% endif %}</td>
             <td>{{ fila.proveedor or "—" }}</td>
+            <td class="accion">
+              {% if fila.vigente %}
+                <a class="enlace enlace-chico" href="{{ url_for('anular_movimiento', movimiento_id=fila.id, **parametros_filtro) }}"
+                   title="Si se cargó por error">Anular</a>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
+    {% if paginas > 1 %}
+      <nav class="paginacion" aria-label="Páginas">
+        {% if pagina > 1 %}<a class="enlace" href="{{ url_for('movimientos', pagina=pagina - 1, **parametros_filtro) }}">← Más nuevos</a>{% endif %}
+        <span class="secundario">Página {{ pagina }} de {{ paginas }}</span>
+        {% if pagina < paginas %}<a class="enlace" href="{{ url_for('movimientos', pagina=pagina + 1, **parametros_filtro) }}">Más viejos →</a>{% endif %}
+      </nav>
+    {% endif %}
   {% else %}
     <p class="vacio">No hay movimientos con este filtro. Probá con otras fechas.</p>
   {% endif %}

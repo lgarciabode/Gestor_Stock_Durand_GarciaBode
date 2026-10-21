@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block titulo %}Anular movimiento{% endblock %}
+{% block encabezado %}Anular movimiento{% endblock %}
+{% block subtitulo %}Para corregir un movimiento que se cargó por error{% endblock %}
+
+{% block contenido %}
+<section class="panel">
+  <table class="tabla">
+    <thead><tr><th>Fecha</th><th>Movimiento</th><th>Repuesto</th><th class="numero">Cantidad</th><th>Proveedor</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="fecha">{{ fila.fecha_texto }}</td>
+        <td>{{ fila.tipo_texto }}</td>
+        <td><strong>{{ fila.codigo }}</strong><div class="secundario">{{ fila.marca }} · {{ fila.categoria }}</div></td>
+        <td class="numero cantidad-{{ fila.tipo|lower }}">{{ fila.cantidad_texto }}{% if fila.unidad_medida == 'cm' %} cm{% endif %}</td>
+        <td>{{ fila.proveedor or "—" }}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    Se va a registrar, con fecha de hoy, un movimiento con el efecto contrario
+    (<strong>{% if fila.cantidad_texto == "0" %}0{% else %}{{ "-" if fila.cantidad_texto.startswith("+") else "+" }}{{ fila.cantidad_texto[1:] }}{% endif %}</strong>).
+    No se borra nada: los dos quedan en el historial, marcados como "anulado" y "anulación".
+  </p>
+  <p class="secundario">Si en realidad hay que cargar otra cantidad, después de anular cargá el movimiento correcto.</p>
+  <form method="post" class="filtros-botones">
+    <button type="submit" class="boton">Sí, anular</button>
+    <a class="enlace" href="{{ url_for('movimientos', **volver) }}">Cancelar</a>
+  </form>
+</section>
+{% endblock %}

@@ -52,7 +52,7 @@ classDiagram
         +tiene_sobrestock() bool
         +calcular_sugerencia_compra() float
         +estado() EstadoStock
-        +ajuste_por_conteo(cantidad_contada: float, fecha: str) Optional~MovimientoStock~
+        +ajuste_por_conteo(cantidad_contada: float, fecha: str) MovimientoStock
     }
 
     class EstadoStock {
@@ -75,6 +75,7 @@ classDiagram
         +Optional~int~ proveedor_id
         +Optional~str~ codigo_proveedor_raw
         +str origen
+        +Optional~int~ anula_id
     }
 
     class Alerta {
@@ -106,7 +107,10 @@ classDiagram
         +obtener_repuestos_bajo_reorden() List~Repuesto~
         +registrar_movimiento(mov: MovimientoStock) int
         +obtener_movimientos(repuesto_id: int) List~MovimientoStock~
-        +registrar_conteo(repuesto_id: int, cantidad_contada: float, fecha: str) Optional~int~
+        +obtener_movimiento(movimiento_id: int) Optional~MovimientoStock~
+        +esta_anulado(movimiento_id: int) bool
+        +registrar_conteo(repuesto_id: int, cantidad_contada: float, fecha: str) MovimientoStock
+        +obtener_repuestos_contados() List~Repuesto~
     }
 
     class RepositorioAlertas {
@@ -329,11 +333,13 @@ classDiagram
         +registrar_ingreso(repuesto_id, cantidad, fecha, proveedor_id) ResultadoMovimiento
         +registrar_egreso(repuesto_id, cantidad, fecha) ResultadoMovimiento
         +registrar_conteo(repuesto_id, cantidad_contada, fecha) ResultadoMovimiento
+        +anular(movimiento_id) ResultadoMovimiento
     }
     class ResultadoMovimiento {
-        +Optional~int~ movimiento_id
+        +int movimiento_id
         +Repuesto repuesto
         +List~Alerta~ alertas_nuevas
+        +Optional~float~ diferencia
     }
 
     ServicioMovimientos --> GestorInventarioBD : registra
@@ -366,6 +372,9 @@ classDiagram
         +float cantidad
         +str unidad_medida
         +str proveedor
+        +Optional~int~ anula_id
+        +bool anulado
+        +vigente() bool
         +como_tupla() tuple
     }
     class ConsultaMovimientos {

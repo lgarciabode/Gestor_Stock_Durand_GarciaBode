@@ -163,15 +163,46 @@ class PruebaPantallaAlertas(unittest.TestCase):
         alerta = self.crear_alertas()[0]
         self.assertEqual(self.cliente.get(f"/alertas/{alerta.id}/atendida").status_code, 405)
 
+    def contar(self, *codigos):
+        """Registra un conteo que coincide con el sistema (los marca como contados)."""
+        conexion = obtener_conexion(self.ruta_bd)
+        try:
+            gestor = GestorInventarioBD(conexion)
+            for codigo in codigos:
+                rid = self.ids[codigo]
+                gestor.registrar_conteo(rid, gestor.obtener_repuesto_id(rid).stock_actual, HOY)
+        finally:
+            conexion.close()
+
     def test_revisar_todo_crea_las_que_faltan_sin_duplicar(self):
+        # Arrange: los dos rodamientos ya se contaron
+        self.contar("6204 2RS", "6207 2RS")
+
         # Act
         primera = self.cliente.post("/alertas/revisar", follow_redirects=True).get_data(as_text=True)
         segunda = self.cliente.post("/alertas/revisar", follow_redirects=True).get_data(as_text=True)
 
         # Assert
-        self.assertIn("Se encontraron 2 alertas nuevas", primera)
+        self.assertIn("Se encontraron 2 alertas nuevas en los 2 repuestos ya contados", primera)
         self.assertIn("No hay alertas nuevas", segunda)
         self.assertEqual(len(self.abiertas()), 2)
+
+    def test_revisar_todo_no_revisa_los_que_falta_contar(self):
+        # Arrange: solo se conto el 6204 (el 6207 daria "Sobra stock" con su stock inflado)
+        self.contar("6204 2RS")
+
+        # Act
+        html = self.cliente.post("/alertas/revisar", follow_redirects=True).get_data(as_text=True)
+
+        # Assert
+        self.assertEqual([a.tipo for a in self.abiertas()], ["REORDEN"])
+        self.assertIn("Se encontró 1 alerta nueva en el repuesto ya contado", html)
+        self.assertIn("Faltan contar 2 repuestos", html)
+
+    def test_sin_nada_contado_no_crea_alertas(self):
+        html = self.cliente.post("/alertas/revisar", follow_redirects=True).get_data(as_text=True)
+        self.assertEqual(self.abiertas(), [])
+        self.assertIn("Faltan contar 3 repuestos", html)
 
 
 if __name__ == "__main__":

@@ -28,7 +28,8 @@ from config import (BASE_DIR, DATABASE_URL, RUTA_BD_USUARIOS,
 from modules.alertas import (ETIQUETAS_ATENDER_ALERTA, ETIQUETAS_ESTADO,
                              ETIQUETAS_UMBRALES,
                              ETIQUETAS_TIPO_ALERTA, MotorAlertas,
-                             reglas_por_defecto, texto_cantidad)
+                             ServicioParametrosStock, reglas_por_defecto,
+                             texto_cantidad)
 from modules.base_datos import inicializar_si_hace_falta, obtener_conexion
 from modules.catalogo import (CatalogoInvalidoError, FiltroCatalogo,
                               ServicioCatalogo)
@@ -130,9 +131,9 @@ def filas_de_alertas(gestor: GestorInventarioBD, alertas) -> list:
 # Opciones del formulario "Registrar movimiento". Las palabras son las del
 # taller; el valor es lo que viaja al servidor.
 TIPOS_MOVIMIENTO_FORMULARIO = {
-    "egreso": "Quitar (se usó)",
-    "ingreso": "Agregar (llegó una compra)",
-    "conteo": "Hay en el estante (conteo)",
+    "egreso": "Quitar",
+    "ingreso": "Agregar",
+    "conteo": "Stock disponible",
 }
 
 
@@ -162,9 +163,14 @@ def buscar_repuesto_elegido(opciones: dict, texto: str):
 
 def mensaje_de_resultado(tipo: str, cantidad: float, resultado) -> str:
     rep = resultado.repuesto
-    if tipo == "conteo" and resultado.movimiento_id is None:
-        return f"Listo: {rep.codigo} ya tenía {texto_cantidad(rep, rep.stock_actual)}, no hubo que corregir nada."
-    accion = {"ingreso": "Se agregaron", "egreso": "Se quitaron", "conteo": "Stock corregido:"}[tipo]
+    if tipo == "conteo" and resultado.diferencia == 0:
+        return (f"Listo: {rep.codigo} ya tenía {texto_cantidad(rep, rep.stock_actual)}, no hubo que corregir nada. "
+                "Quedó registrado el conteo.")
+    if tipo == "conteo":
+        accion = "Stock corregido:"
+    else:
+        una = rep.unidad_medida == "unidad" and cantidad == 1  # "Se quitó 1 unidad" / "Se quitaron 4 unidades"
+        accion = {"ingreso": ("Se agregaron", "Se agregó"), "egreso": ("Se quitaron", "Se quitó")}[tipo][una]
     if tipo == "conteo":
         return f"Listo. {accion} {rep.codigo} quedó en {texto_cantidad(rep, rep.stock_actual)}."
     return f"Listo. {accion} {texto_cantidad(rep, cantidad)} de {rep.codigo}. Ahora hay {texto_cantidad(rep, rep.stock_actual)}."
@@ -173,6 +179,7 @@ def mensaje_de_resultado(tipo: str, cantidad: float, resultado) -> str:
 # ---------------------------------------------------------------- Historial (filtro desde la URL)
 
 DIAS_POR_DEFECTO = 30
+POR_PAGINA = 50
 
 
 def filtro_desde_pedido(opciones: dict) -> tuple:
@@ -272,14 +279,26 @@ def registrar_rutas(app: Flask) -> None:
     @app.route("/alertas/revisar", methods=["POST"])
     @login_required
     def revisar_alertas():
-        """Botón "Revisar todo": aplica las reglas a todos los repuestos activos."""
+        """Botón "Revisar todo": aplica las reglas a los repuestos YA CONTADOS.
+
+        Decisión del equipo (20/10): los repuestos que todavía no se contaron
+        tienen el stock "inflado" de la carga histórica y darían alertas falsas,
+        así que no se revisan hasta que se cuenten.
+        """
         conexion = obtener_bd()
+        gestor = GestorInventarioBD(conexion)
         motor = MotorAlertas(reglas_por_defecto(), RepositorioAlertas(conexion))
-        nuevas = motor.revisar_todos(GestorInventarioBD(conexion).obtener_repuestos())
-        if nuevas:
-            flash(f"Se encontraron {len(nuevas)} alertas nuevas.", "success")
-        else:
-            flash("No hay alertas nuevas.", "success")
+        contados = gestor.obtener_repuestos_contados()
+        nuevas = motor.revisar_todos(contados)
+        faltan = len(gestor.obtener_repuestos()) - len(contados)
+        resumen = (f"Se encontraron {len(nuevas)} alertas nuevas" if len(nuevas) > 1
+                   else "Se encontró 1 alerta nueva" if nuevas else "No hay alertas nuevas")
+        donde = "en el repuesto ya contado" if len(contados) == 1 else f"en los {len(contados)} repuestos ya contados"
+        flash(f"{resumen} {donde}.", "success")
+        if faltan:
+            cuantos = "Falta contar 1 repuesto" if faltan == 1 else f"Faltan contar {faltan} repuestos"
+            flash(f"{cuantos}: no se revisan hasta que se cuenten, "
+                  "porque su stock todavía no es el del estante.", "alerta")
         return redirect(url_for("alertas"))
 
     @app.route("/movimientos/nuevo", methods=["GET", "POST"])
@@ -345,10 +364,16 @@ def registrar_rutas(app: Flask) -> None:
         except FiltroInvalidoError as e:
             error = str(e)
             datos = {k: request.args.get(k, "") for k in ("desde", "hasta", "tipo", "repuesto")}
+        # Paginación: se muestran 50 por página (las descargas llevan todo lo filtrado)
+        paginas = max(1, -(-len(filas) // POR_PAGINA))
+        pagina = min(max(request.args.get("pagina", 1, type=int), 1), paginas)
         return render_template(
             "movimientos.html",
             datos=datos,
-            filas=filas,
+            filas=filas[(pagina - 1) * POR_PAGINA: pagina * POR_PAGINA],
+            total=len(filas),
+            pagina=pagina,
+            paginas=paginas,
             error=error,
             conteo=contar_por_tipo(filas),
             tipos=ETIQUETAS_TIPO_MOVIMIENTO,
@@ -357,6 +382,36 @@ def registrar_rutas(app: Flask) -> None:
             # Los links de descarga repiten el mismo filtro de la pantalla
             parametros_filtro={k: v for k, v in datos.items() if v},
         ), (400 if error else 200)
+
+    @app.route("/movimientos/<int:movimiento_id>/anular", methods=["GET", "POST"])
+    @login_required
+    def anular_movimiento(movimiento_id: int):
+        """Corregir un movimiento cargado por error.
+
+        GET muestra qué se va a anular y pide confirmación; POST lo anula.
+        La confirmación es una pantalla propia (no un cartel del navegador):
+        así se ve exactamente qué movimiento es antes de tocar nada.
+        """
+        conexion = obtener_bd()
+        gestor = GestorInventarioBD(conexion)
+        original = gestor.obtener_movimiento(movimiento_id)
+        if original is None:
+            abort(404)
+        rep = gestor.obtener_repuesto_id(original.repuesto_id)
+        if request.method == "POST":
+            motor = MotorAlertas(reglas_por_defecto(), RepositorioAlertas(conexion))
+            try:
+                resultado = ServicioMovimientos(gestor, motor).anular(movimiento_id)
+            except MovimientoInvalidoError as e:
+                flash(str(e), "warning")
+            else:
+                flash(f"Listo: movimiento anulado. {rep.codigo} quedó con "
+                      f"{texto_cantidad(rep, resultado.repuesto.stock_actual)}.", "success")
+                avisar_alertas_nuevas(resultado.alertas_nuevas, rep.codigo)
+            return redirect(url_for("movimientos", **{k: v for k, v in request.args.items()}))
+        filtro = FiltroMovimientos(original.fecha, original.fecha, repuesto_id=original.repuesto_id)
+        fila = next(f for f in ConsultaMovimientos(conexion).buscar(filtro) if f.id == movimiento_id)
+        return render_template("anular_movimiento.html", fila=fila, volver=request.args)
 
     @app.route("/movimientos/descargar/<formato>")
     @login_required
@@ -515,6 +570,21 @@ def registrar_rutas(app: Flask) -> None:
 
 # ---------------------------------------------------------------- Fábrica
 
+def actualizar_umbrales() -> int:
+    """Recalcula los umbrales de todos los repuestos con el historial de compras.
+
+    Se hace al arrancar la app: así nunca quedan repuestos "sin datos" que ya
+    tienen compras, y los umbrales acompañan las compras nuevas. Los corregidos
+    a mano no se tocan (ServicioParametrosStock los saltea).
+    Devuelve cuántos repuestos se actualizaron.
+    """
+    conexion = obtener_conexion(DATABASE_URL)
+    try:
+        return ServicioParametrosStock.desde_historial(GestorInventarioBD(conexion)).recalcular_todos()
+    finally:
+        conexion.close()
+
+
 def create_app() -> Flask:
     """Crea y configura la aplicación (patrón fábrica, como el ejemplo de la cátedra)."""
     if not SECRET_KEY:
@@ -529,6 +599,7 @@ def create_app() -> Flask:
     app.config["SESSION_TYPE"] = "filesystem"
 
     inicializar_si_hace_falta(DATABASE_URL, RUTA_EXCEL_HISTORICO)
+    actualizar_umbrales()
     app.teardown_appcontext(cerrar_bd)
     configurar_autenticacion(app)
     registrar_rutas(app)
