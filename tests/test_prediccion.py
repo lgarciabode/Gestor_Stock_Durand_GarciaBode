@@ -32,7 +32,7 @@ if __name__ == '__main__':
     
     # Instanciamos el repositorio y el servicio
     repo = RepositorioSimulado()
-    servicio = ServicioPrediccion(repositorio_datos=repo)
+    servicio = ServicioPrediccion(gestor_bd=repo)
     
     # Ejecutamos la predicción
     resultados = servicio.generar_predicciones_catalogo(meses_a_proyectar=3)
