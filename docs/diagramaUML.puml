@@ -329,6 +329,37 @@ package "Historial y descargas (modules/reportes.py)" {
     }
 }
 
+package "Catálogo (modules/catalogo.py)" {
+    class FiltroCatalogo <<frozen>> {
+        +texto: str
+        +categoria_id: Optional<int>
+        +estado: Optional<EstadoStock>
+        +incluir_inactivos: bool
+    }
+
+    class FichaRepuesto <<frozen>> {
+        +repuesto: Repuesto
+        +marca: str
+        +categoria: str
+        +estado(): EstadoStock
+        +coincide(texto: str): bool
+    }
+
+    class ServicioCatalogo {
+        -gestor: GestorInventarioBD
+        -motor: MotorAlertas
+        -fabrica_parametros: Callable
+        +listar(filtro: FiltroCatalogo): List<FichaRepuesto>
+        +ficha(repuesto_id: int): FichaRepuesto
+        +crear(codigo: str, marca: str, categoria: str, especificaciones: str, unidad_medida: str): int
+        +corregir_datos(repuesto_id: int, categoria: str, especificaciones: str): None
+        +inactivar(repuesto_id: int): None
+        +activar(repuesto_id: int): List<Alerta>
+        +fijar_umbrales(repuesto_id: int, minimo: float, reorden: float, maximo: float): List<Alerta>
+        +volver_a_automatico(repuesto_id: int): Optional<ParametrosStock>
+    }
+}
+
 ' ---------------- Relaciones del dominio ----------------
 Repuesto "0..*" --> "1" Marca : pertenece a
 Repuesto "0..*" --> "1" Categoria : pertenece a
@@ -387,6 +418,14 @@ ConsultaMovimientos ..> FilaReporte : crea
 ExportadorReporte <|-- ExportadorExcel
 ExportadorReporte <|-- ExportadorPDF
 ExportadorReporte ..> FilaReporte : exporta
+
+' ---------------- Catálogo ----------------
+ServicioCatalogo --> GestorInventarioBD
+ServicioCatalogo --> MotorAlertas : revisa el repuesto cambiado
+ServicioCatalogo ..> ServicioParametrosStock : crea (fábrica)
+ServicioCatalogo ..> FiltroCatalogo : usa
+ServicioCatalogo ..> FichaRepuesto : crea
+FichaRepuesto --> Repuesto
 
 ' ---------------- Movimientos del día a día ----------------
 ServicioMovimientos --> GestorInventarioBD : registra

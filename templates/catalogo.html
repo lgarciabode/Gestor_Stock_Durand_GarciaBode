@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block titulo %}Catálogo{% endblock %}
+{% block encabezado %}Catálogo{% endblock %}
+{% block subtitulo %}Todos los repuestos del taller, con su stock y su estado{% endblock %}
+
+{% block acciones %}
+  <a class="boton" href="{{ url_for('nuevo_repuesto') }}">Nuevo repuesto</a>
+{% endblock %}
+
+{% block contenido %}
+<section class="panel">
+  <form method="get" class="filtros filtros-catalogo">
+    <label class="campo">
+      Buscar
+      <input type="search" name="texto" value="{{ datos.texto }}" placeholder="Código, marca, categoría o medida">
+    </label>
+    <label class="campo">
+      Categoría
+      <select name="categoria">
+        <option value="">Todas</option>
+        {% for c in categorias %}
+          <option value="{{ c.id }}" {{ 'selected' if datos.categoria == c.id|string }}>{{ c.nombre }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="campo">
+      Estado
+      <select name="estado">
+        <option value="">Todos</option>
+        {% for estado, texto in etiquetas.items() if estado.name != 'INACTIVO' %}
+          <option value="{{ estado.name }}" {{ 'selected' if datos.estado == estado.name }}>{{ texto }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="opcion opcion-chica">
+      <input type="checkbox" name="inactivos" value="1" {{ 'checked' if datos.inactivos == '1' }}> Ver inactivos
+    </label>
+    <div class="filtros-botones">
+      <button type="submit" class="boton">Filtrar</button>
+      <a href="{{ url_for('catalogo') }}" class="enlace">Limpiar</a>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <p class="resumen"><strong>{{ fichas|length }} {{ "repuesto" if fichas|length == 1 else "repuestos" }}</strong></p>
+  {% if fichas %}
+    <table class="tabla">
+      <thead>
+        <tr><th>Repuesto</th><th>Especificaciones</th><th class="numero">Stock</th><th>Estado</th><th class="numero">Pedir cuando queden</th></tr>
+      </thead>
+      <tbody>
+        {% for f in fichas %}
+          {% set r = f.repuesto %}
+          <tr>
+            <td>
+              <a class="enlace" href="{{ url_for('ficha_repuesto', repuesto_id=r.id) }}">{{ r.codigo }}</a>
+              <div class="secundario">{{ f.marca }} · {{ f.categoria }}</div>
+            </td>
+            <td class="secundario">{{ r.especificaciones or "—" }}</td>
+            <td class="numero">{{ texto_cantidad(r, r.stock_actual) }}</td>
+            <td><span class="badge badge-{{ clases_css[f.estado] }}">{{ etiquetas[f.estado] }}</span></td>
+            <td class="numero">
+              {% if r.punto_reorden is not none %}
+                {{ texto_cantidad(r, r.punto_reorden) }}{% if r.parametros_manuales %} <span class="secundario" title="Corregido a mano">(a mano)</span>{% endif %}
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="vacio">No hay repuestos con ese filtro.</p>
+  {% endif %}
+</section>
+{% endblock %}

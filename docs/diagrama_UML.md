@@ -1,6 +1,6 @@
 # 📐 Diagrama de Clases UML — Gestor de Inventario
 
-> Actualizado el 20/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada`, **módulo de alertas**, **conteo inicial** con planilla y **registro de movimientos** e **historial con descargas**.
+> Actualizado el 20/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada`, **módulo de alertas**, **conteo inicial** con planilla y **registro de movimientos**, **historial con descargas** y **catálogo**.
 > La misma información está en `diagramaUML.puml` (PlantUML) y en la imagen `Diagrama_Clases_Gestor_Stock.png`.
 
 **Notación** (Unidades 2 y 3 de POO): `+` público, `-` privado, `*` método abstracto, `<<abstract>>` clase abstracta (ABC).
@@ -390,4 +390,47 @@ classDiagram
     ExportadorReporte <|-- ExportadorExcel
     ExportadorReporte <|-- ExportadorPDF
     ExportadorReporte ..> FilaReporte : exporta
+```
+
+## 6. Catálogo (modules/catalogo.py)
+
+`ServicioCatalogo` coordina el alta y la corrección de repuestos, activar/inactivar (solo sin stock) y los umbrales a mano. Después de cada cambio que puede afectar el estado, revisa las alertas de ese repuesto.
+
+```mermaid
+classDiagram
+    class FiltroCatalogo {
+        <<frozen>>
+        +str texto
+        +Optional~int~ categoria_id
+        +Optional~EstadoStock~ estado
+        +bool incluir_inactivos
+    }
+    class FichaRepuesto {
+        <<frozen>>
+        +Repuesto repuesto
+        +str marca
+        +str categoria
+        +estado() EstadoStock
+        +coincide(texto: str) bool
+    }
+    class ServicioCatalogo {
+        -GestorInventarioBD gestor
+        -MotorAlertas motor
+        -Callable fabrica_parametros
+        +listar(filtro) List~FichaRepuesto~
+        +ficha(repuesto_id) FichaRepuesto
+        +crear(codigo, marca, categoria, especificaciones, unidad_medida) int
+        +corregir_datos(repuesto_id, categoria, especificaciones) None
+        +inactivar(repuesto_id) None
+        +activar(repuesto_id) List~Alerta~
+        +fijar_umbrales(repuesto_id, minimo, reorden, maximo) List~Alerta~
+        +volver_a_automatico(repuesto_id) Optional~ParametrosStock~
+    }
+
+    ServicioCatalogo --> GestorInventarioBD
+    ServicioCatalogo --> MotorAlertas : revisa el repuesto cambiado
+    ServicioCatalogo ..> ServicioParametrosStock : crea (fábrica)
+    ServicioCatalogo ..> FiltroCatalogo : usa
+    ServicioCatalogo ..> FichaRepuesto : crea
+    FichaRepuesto --> Repuesto
 ```

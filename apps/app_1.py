@@ -26,11 +26,14 @@ from auth_module.flask_ext.extension import FlaskExtension
 from config import (BASE_DIR, DATABASE_URL, RUTA_BD_USUARIOS,
                     RUTA_EXCEL_HISTORICO, SECRET_KEY)
 from modules.alertas import (ETIQUETAS_ATENDER_ALERTA, ETIQUETAS_ESTADO,
+                             ETIQUETAS_UMBRALES,
                              ETIQUETAS_TIPO_ALERTA, MotorAlertas,
                              reglas_por_defecto, texto_cantidad)
 from modules.base_datos import inicializar_si_hace_falta, obtener_conexion
+from modules.catalogo import (CatalogoInvalidoError, FiltroCatalogo,
+                              ServicioCatalogo)
 from modules.crud import (AlertaNoEncontradaError, GestorInventarioBD,
-                          RepositorioAlertas)
+                          RepositorioAlertas, RepuestoNoEncontradoError)
 from modules.modelos import EstadoStock
 from modules.movimientos import MovimientoInvalidoError, ServicioMovimientos
 from modules.reportes import (ETIQUETAS_TIPO_MOVIMIENTO, EXPORTADORES,
@@ -195,6 +198,26 @@ def filtro_desde_pedido(opciones: dict) -> tuple:
     return datos, filtro
 
 
+# ---------------------------------------------------------------- Catálogo (ayudas)
+
+def servicio_catalogo() -> ServicioCatalogo:
+    conexion = obtener_bd()
+    motor = MotorAlertas(reglas_por_defecto(), RepositorioAlertas(conexion))
+    return ServicioCatalogo(GestorInventarioBD(conexion), motor)
+
+
+def avisar_alertas_nuevas(alertas, codigo: str) -> None:
+    for alerta in alertas:
+        flash(f"Nuevo aviso — {ETIQUETAS_TIPO_ALERTA[alerta.tipo]}: {codigo}. Lo ves en Alertas.", "alerta")
+
+
+def leer_numero(texto: str, nombre: str) -> float:
+    try:
+        return float((texto or "").strip().replace(",", "."))
+    except ValueError:
+        raise CatalogoInvalidoError(f"Escribí {nombre} con números.") from None
+
+
 # ---------------------------------------------------------------- Rutas
 
 def registrar_rutas(app: Flask) -> None:
@@ -295,9 +318,7 @@ def registrar_rutas(app: Flask) -> None:
                 error = str(e)
             else:
                 flash(mensaje_de_resultado(datos["tipo"], cantidad, resultado), "success")
-                for alerta in resultado.alertas_nuevas:
-                    flash(f"Nuevo aviso — {ETIQUETAS_TIPO_ALERTA[alerta.tipo]}: {rep.codigo}. "
-                          "Lo ves en Alertas.", "alerta")
+                avisar_alertas_nuevas(resultado.alertas_nuevas, rep.codigo)
                 # POST -> redirect -> GET: queda el formulario limpio para cargar otro
                 return redirect(url_for("registrar_movimiento"))
 
@@ -357,6 +378,132 @@ def registrar_rutas(app: Flask) -> None:
             as_attachment=True,
             download_name=f"movimientos_{filtro.desde}_{filtro.hasta}.{exportador.extension}",
         )
+
+    @app.route("/catalogo")
+    @login_required
+    def catalogo():
+        """Lista de repuestos con buscador y filtros por categoría y estado."""
+        gestor = GestorInventarioBD(obtener_bd())
+        datos = {k: request.args.get(k, "").strip() for k in ("texto", "categoria", "estado", "inactivos")}
+        estado = EstadoStock[datos["estado"]] if datos["estado"] in EstadoStock.__members__ else None
+        filtro = FiltroCatalogo(
+            texto=datos["texto"],
+            categoria_id=int(datos["categoria"]) if datos["categoria"].isdigit() else None,
+            estado=estado,
+            incluir_inactivos=datos["inactivos"] == "1",
+        )
+        return render_template(
+            "catalogo.html",
+            fichas=servicio_catalogo().listar(filtro),
+            datos=datos,
+            categorias=gestor.obtener_categorias(),
+            etiquetas=ETIQUETAS_ESTADO,
+            clases_css=CLASE_CSS_ESTADO,
+            texto_cantidad=texto_cantidad,
+        )
+
+    @app.route("/catalogo/nuevo", methods=["GET", "POST"])
+    @login_required
+    def nuevo_repuesto():
+        """Alta de un repuesto que no estaba en el catálogo."""
+        gestor = GestorInventarioBD(obtener_bd())
+        datos = {k: request.form.get(k, "").strip() for k in ("codigo", "marca", "categoria", "especificaciones", "unidad")}
+        error = None
+        if request.method == "POST":
+            try:
+                nuevo_id = servicio_catalogo().crear(datos["codigo"], datos["marca"], datos["categoria"],
+                                                     datos["especificaciones"], datos["unidad"] or "unidad")
+            except CatalogoInvalidoError as e:
+                error = str(e)
+            else:
+                flash(f"Listo: {datos['codigo']} quedó en el catálogo. Cargale una compra o un conteo.", "success")
+                return redirect(url_for("ficha_repuesto", repuesto_id=nuevo_id))
+        return render_template(
+            "nuevo_repuesto.html",
+            datos=datos,
+            error=error,
+            marcas=gestor.obtener_marcas(),
+            categorias=gestor.obtener_categorias(),
+        ), (400 if error else 200)
+
+    @app.route("/catalogo/<int:repuesto_id>")
+    @login_required
+    def ficha_repuesto(repuesto_id: int):
+        """Ficha de un repuesto: datos, stock, estado, umbrales y acciones."""
+        try:
+            ficha = servicio_catalogo().ficha(repuesto_id)
+        except RepuestoNoEncontradoError:
+            abort(404)
+        return render_template(
+            "ficha_repuesto.html",
+            ficha=ficha,
+            rep=ficha.repuesto,
+            etiquetas=ETIQUETAS_ESTADO,
+            clases_css=CLASE_CSS_ESTADO,
+            umbrales=ETIQUETAS_UMBRALES,
+            texto_cantidad=texto_cantidad,
+            categorias=GestorInventarioBD(obtener_bd()).obtener_categorias(),
+            Estado=EstadoStock,
+        )
+
+    def _accion_en_ficha(repuesto_id: int, accion):
+        """Ejecuta una acción de la ficha y vuelve a ella (POST -> redirect -> GET)."""
+        try:
+            accion()
+        except CatalogoInvalidoError as e:
+            flash(str(e), "warning")
+        except RepuestoNoEncontradoError:
+            abort(404)
+        return redirect(url_for("ficha_repuesto", repuesto_id=repuesto_id))
+
+    @app.route("/catalogo/<int:repuesto_id>/datos", methods=["POST"])
+    @login_required
+    def corregir_repuesto(repuesto_id: int):
+        def accion():
+            servicio_catalogo().corregir_datos(repuesto_id, request.form.get("categoria", ""),
+                                               request.form.get("especificaciones", ""))
+            flash("Listo: datos guardados.", "success")
+        return _accion_en_ficha(repuesto_id, accion)
+
+    @app.route("/catalogo/<int:repuesto_id>/umbrales", methods=["POST"])
+    @login_required
+    def umbrales_repuesto(repuesto_id: int):
+        def accion():
+            servicio = servicio_catalogo()
+            nuevas = servicio.fijar_umbrales(
+                repuesto_id,
+                minimo=leer_numero(request.form.get("stock_minimo"), "el mínimo"),
+                reorden=leer_numero(request.form.get("punto_reorden"), "cuándo pedir"),
+                maximo=leer_numero(request.form.get("stock_maximo"), "el máximo"),
+            )
+            flash("Listo: umbrales guardados. El cálculo automático ya no los va a cambiar.", "success")
+            avisar_alertas_nuevas(nuevas, servicio.ficha(repuesto_id).repuesto.codigo)
+        return _accion_en_ficha(repuesto_id, accion)
+
+    @app.route("/catalogo/<int:repuesto_id>/automatico", methods=["POST"])
+    @login_required
+    def automatico_repuesto(repuesto_id: int):
+        def accion():
+            if servicio_catalogo().volver_a_automatico(repuesto_id) is None:
+                flash("Volvió al cálculo automático, pero todavía no tiene compras para calcular: "
+                      "quedan los umbrales que tenía.", "warning")
+            else:
+                flash("Listo: umbrales recalculados con el historial de compras.", "success")
+        return _accion_en_ficha(repuesto_id, accion)
+
+    @app.route("/catalogo/<int:repuesto_id>/activo", methods=["POST"])
+    @login_required
+    def activo_repuesto(repuesto_id: int):
+        def accion():
+            servicio = servicio_catalogo()
+            if request.form.get("accion") == "activar":
+                nuevas = servicio.activar(repuesto_id)
+                flash("Listo: el repuesto está activo otra vez.", "success")
+                avisar_alertas_nuevas(nuevas, servicio.ficha(repuesto_id).repuesto.codigo)
+            else:
+                servicio.inactivar(repuesto_id)
+                flash("Listo: el repuesto quedó inactivo. No se borró nada; se puede volver a activar.", "success")
+        return _accion_en_ficha(repuesto_id, accion)
 
     @app.context_processor
     def datos_del_menu():

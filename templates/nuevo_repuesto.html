@@ -1,0 +1,41 @@
+{% extends "layout.html" %}
+{% block titulo %}Nuevo repuesto{% endblock %}
+{% block encabezado %}Nuevo repuesto{% endblock %}
+{% block subtitulo %}Para un repuesto que todavía no está en el catálogo{% endblock %}
+
+{% block acciones %}<a class="enlace" href="{{ url_for('catalogo') }}">Volver al catálogo</a>{% endblock %}
+
+{% block contenido %}
+{% if error %}<div class="aviso aviso-danger" role="alert">{{ error }}</div>{% endif %}
+<section class="panel">
+  <form method="post" class="formulario">
+    <div class="fila-campos">
+      <label class="campo">
+        Código <span class="secundario">(tal como lo trae la marca)</span>
+        <input type="text" name="codigo" value="{{ datos.codigo }}" required>
+      </label>
+      <label class="campo">
+        Marca
+        <input type="text" name="marca" list="lista-marcas" value="{{ datos.marca }}" required autocomplete="off">
+        <datalist id="lista-marcas">{% for m in marcas %}<option value="{{ m.nombre }}">{% endfor %}</datalist>
+      </label>
+      <label class="campo">
+        Categoría
+        <input type="text" name="categoria" list="lista-categorias" value="{{ datos.categoria }}" required autocomplete="off">
+        <datalist id="lista-categorias">{% for c in categorias %}<option value="{{ c.nombre }}">{% endfor %}</datalist>
+      </label>
+    </div>
+    <label class="campo">
+      Especificaciones <span class="secundario">(opcional)</span>
+      <input type="text" name="especificaciones" value="{{ datos.especificaciones }}" placeholder="Medidas, serie, variante…">
+    </label>
+    <fieldset class="opciones-tipo">
+      <legend>¿Cómo se cuenta?</legend>
+      <label class="opcion"><input type="radio" name="unidad" value="unidad" {{ 'checked' if datos.unidad != 'cm' }}> Por unidad</label>
+      <label class="opcion"><input type="radio" name="unidad" value="cm" {{ 'checked' if datos.unidad == 'cm' }}> En centímetros</label>
+    </fieldset>
+    <p class="secundario">Si la marca o la categoría no están en la lista, se crean. Empieza con stock 0: después cargale una compra o un conteo.</p>
+    <div><button type="submit" class="boton">Crear repuesto</button></div>
+  </form>
+</section>
+{% endblock %}

@@ -24,7 +24,7 @@
       {# Se habilitan a medida que se crea cada pantalla #}
       <a href="{{ url_for('movimientos') }}" class="{{ 'activo' if request.endpoint == 'movimientos' }}">Movimientos</a>
       <a href="{{ url_for('registrar_movimiento') }}" class="{{ 'activo' if request.endpoint == 'registrar_movimiento' }}">Registrar movimiento</a>
-      <span class="pendiente" title="Próximamente">Catálogo</span>
+      <a href="{{ url_for('catalogo') }}" class="{{ 'activo' if request.endpoint in ('catalogo', 'ficha_repuesto', 'nuevo_repuesto') }}">Catálogo</a>
       <a href="{{ url_for('alertas') }}" class="{{ 'activo' if request.endpoint == 'alertas' }}">
         Alertas
         {% if alertas_abiertas %}<span class="contador" title="Alertas sin atender">{{ alertas_abiertas }}</span>{% endif %}

@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+{% block titulo %}{{ rep.codigo }}{% endblock %}
+{% block encabezado %}{{ rep.codigo }}{% endblock %}
+{% block subtitulo %}{{ ficha.marca }} · {{ ficha.categoria }}{% if not rep.activo %} · inactivo{% endif %}{% endblock %}
+
+{% block acciones %}
+  <a class="boton boton-secundario" href="{{ url_for('movimientos', repuesto=rep.codigo ~ ' · ' ~ ficha.marca ~ ' · ' ~ ficha.categoria, desde='2000-01-01') }}">Ver sus movimientos</a>
+  <a class="enlace" href="{{ url_for('catalogo') }}">Volver al catálogo</a>
+{% endblock %}
+
+{% block contenido %}
+<section class="kpis">
+  <article class="tarjeta">
+    <div class="etiqueta">En el estante</div>
+    <div class="valor">{{ texto_cantidad(rep, rep.stock_actual) }}</div>
+    <div class="detalle"><span class="badge badge-{{ clases_css[ficha.estado] }}">{{ etiquetas[ficha.estado] }}</span></div>
+  </article>
+  {% for campo in ('punto_reorden', 'stock_minimo', 'stock_maximo') %}
+    <article class="tarjeta">
+      <div class="etiqueta">{{ umbrales[campo] }}</div>
+      <div class="valor">{% if rep[campo] is not none and rep.tiene_umbrales() %}{{ texto_cantidad(rep, rep[campo]) }}{% else %}—{% endif %}</div>
+      <div class="detalle">{% if not rep.tiene_umbrales() %}Sin datos todavía{% elif rep.parametros_manuales %}Corregido a mano{% else %}Calculado con las compras{% endif %}</div>
+    </article>
+  {% endfor %}
+</section>
+
+<div class="columnas">
+  <section class="panel">
+    <h2>Cuándo pedir</h2>
+    <p class="secundario">Si el cálculo automático no se ajusta a cómo se usa este repuesto, se puede corregir a mano.</p>
+    <form method="post" action="{{ url_for('umbrales_repuesto', repuesto_id=rep.id) }}" class="formulario">
+      <div class="fila-campos">
+        {% for campo in ('punto_reorden', 'stock_minimo', 'stock_maximo') %}
+          <label class="campo">
+            {{ umbrales[campo] }}
+            <input type="number" name="{{ campo }}" min="0" step="any" required
+                   value="{{ '%g'|format(rep[campo]) if rep[campo] is not none and rep.tiene_umbrales() else '' }}">
+          </label>
+        {% endfor %}
+      </div>
+      <div class="filtros-botones">
+        <button type="submit" class="boton">Guardar a mano</button>
+      </div>
+    </form>
+    {% if rep.parametros_manuales %}
+      <form method="post" action="{{ url_for('automatico_repuesto', repuesto_id=rep.id) }}">
+        <button type="submit" class="boton boton-secundario">Volver al cálculo automático</button>
+      </form>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Datos</h2>
+    <form method="post" action="{{ url_for('corregir_repuesto', repuesto_id=rep.id) }}" class="formulario">
+      <label class="campo">
+        Categoría
+        <input type="text" name="categoria" list="lista-categorias" value="{{ ficha.categoria }}" required>
+        <datalist id="lista-categorias">{% for c in categorias %}<option value="{{ c.nombre }}">{% endfor %}</datalist>
+      </label>
+      <label class="campo">
+        Especificaciones
+        <input type="text" name="especificaciones" value="{{ rep.especificaciones or '' }}" placeholder="Medidas, serie, variante…">
+      </label>
+      <p class="secundario">Unidad: {{ rep.unidad_medida }}. El código y la marca no se cambian: si están mal, creá un repuesto nuevo.</p>
+      <div><button type="submit" class="boton boton-secundario">Guardar datos</button></div>
+    </form>
+
+    <h2>Estado</h2>
+    <form method="post" action="{{ url_for('activo_repuesto', repuesto_id=rep.id) }}">
+      {% if rep.activo %}
+        <input type="hidden" name="accion" value="inactivar">
+        <button type="submit" class="boton boton-secundario" {{ 'disabled' if rep.stock_actual != 0 }}>Inactivar</button>
+        <p class="secundario">{% if rep.stock_actual != 0 %}Se puede inactivar cuando quede en 0.{% else %}Deja de aparecer en listas y alertas. No se borra nada.{% endif %}</p>
+      {% else %}
+        <input type="hidden" name="accion" value="activar">
+        <button type="submit" class="boton">Activar</button>
+      {% endif %}
+    </form>
+  </section>
+</div>
+{% endblock %}

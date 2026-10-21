@@ -1,6 +1,6 @@
 # 🔔 Módulo de alertas — análisis y diseño
 
-> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6 a 10 — conteo físico, conteo inicial con planilla, pantalla de alertas, registro de movimientos e historial — hechos el 20/10/2026).
+> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6 a 11 — conteo físico, conteo inicial con planilla, pantalla de alertas, registro de movimientos, historial y catálogo — hechos el 20/10/2026).
 > Diagrama de clases: `docs/diagrama_UML.md` (sección 2) y `docs/diagramaUML.puml`.
 
 El módulo avisa cuándo hay que reponer un repuesto, cuándo está en riesgo de faltar y cuándo hay stock de más. Cada repuesto tiene **sus propios umbrales**, calculados a partir de cuánto se usa: un mismo stock mínimo para todos no sirve (lo mostró el EDA, `templates/eda_repuestos.ipynb`).
@@ -227,4 +227,12 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
         - Los exportadores son el patrón **Strategy** (tercera vez en el proyecto, después de los parsers y las reglas de alerta): la pantalla no sabe qué formato arma.
         - Contrato de `FiltroMovimientos` (invariante): fechas válidas, desde ≤ hasta y tipo conocido; si no, `FiltroInvalidoError` y la pantalla muestra el motivo.
 
-    11. Pendiente: conteo real en el taller; pantallas "Catálogo", "Proveedores" y "Dashboard".
+    11. ~~Catálogo~~ (20/10): `modules/catalogo.py` (`ServicioCatalogo`, `FiltroCatalogo`, `FichaRepuesto`, `CatalogoInvalidoError`), rutas `/catalogo`, `/catalogo/nuevo` y `/catalogo/<id>` (+ acciones POST `datos`, `umbrales`, `automatico`, `activo`), templates `catalogo.html`, `ficha_repuesto.html` y `nuevo_repuesto.html`. Pruebas: `tests/test_catalogo.py` (19) y `tests/test_app_catalogo.py` (9, se saltean sin Flask).
+
+        - **Lista:** buscador (código, marca, categoría o medida), filtros por categoría y estado, "Ver inactivos". Muestra stock, estado y "Pedir cuando queden" (con "(a mano)" si se corrigió).
+        - **Ficha:** stock, estado y los tres umbrales con su origen ("Calculado con las compras", "Corregido a mano" o "Sin datos todavía"). Desde ahí se corrigen los umbrales a mano, se vuelve al cálculo automático, se corrigen categoría y especificaciones, y se activa o inactiva.
+        - **Nuevo repuesto:** código, marca y categoría (si no existen se crean; la categoría en mayúsculas), especificaciones y si se cuenta por unidad o en cm. Empieza en 0 y "sin datos todavía".
+        - Reglas (`CatalogoInvalidoError`): no se repite marca + código; código y marca no se editan (son su identidad); **solo se inactiva un repuesto sin stock** (el botón aparece deshabilitado si tiene); umbrales coherentes (mínimo ≤ reorden ≤ máximo).
+        - Después de fijar umbrales, activar o volver al automático se revisan las alertas de ese repuesto.
+
+    12. Pendiente: conteo real en el taller; pantallas "Proveedores" y "Dashboard"; decidir con Lucía si "Revisar todo" revisa solo los repuestos ya contados.
