@@ -149,6 +149,10 @@ class ServicioPrediccion:
             df_movimientos = self.gestor_bd.obtener_todos_los_movimientos()
             df_catalogos = self.gestor_bd.obtener_catalogo_repuestos()
 
+        # Solo los movimientos que representan demanda (ver tipos_demanda)
+        if 'tipo' in df_movimientos.columns:
+            df_movimientos = df_movimientos[df_movimientos['tipo'].isin(self.tipos_demanda)]
+
         resultados = []
 
         for _, repuesto in df_catalogos.iterrows():

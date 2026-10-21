@@ -1,0 +1,101 @@
+{% extends "layout.html" %}
+{% block titulo %}Predicción{% endblock %}
+{% block encabezado %}Predicción de compras{% endblock %}
+{% block subtitulo %}Cuánto se va a necesitar de cada repuesto y cuánto conviene comprar{% endblock %}
+
+{% block contenido %}
+<section class="panel">
+  <form method="get" class="filtros">
+    <fieldset class="opciones-tipo">
+      <legend>Para cubrir los próximos</legend>
+      {% for h in horizontes %}
+        <label class="opcion opcion-chica">
+          <input type="radio" name="horizonte" value="{{ h }}" {{ 'checked' if h == horizonte }}> {{ h }} días
+        </label>
+      {% endfor %}
+    </fieldset>
+    <label class="opcion opcion-chica">
+      <input type="checkbox" name="todos" value="1" {{ 'checked' if ver_todos }}> Ver también los que no hace falta comprar
+    </label>
+    <div class="filtros-botones">
+      <button type="submit" class="boton">Ver</button>
+    </div>
+  </form>
+</section>
+
+<section class="kpis kpis-3">
+  <article class="tarjeta">
+    <div class="etiqueta">Repuestos para comprar</div>
+    <div class="valor">{{ total_a_comprar }}</div>
+    <div class="detalle">para los próximos {{ horizonte }} días</div>
+  </article>
+  <article class="tarjeta">
+    <div class="etiqueta">Conteo inicial</div>
+    <div class="valor">{{ avance.porcentaje }}%</div>
+    <div class="detalle">{{ avance.contados }} de {{ avance.total }} repuestos contados</div>
+  </article>
+  <article class="tarjeta">
+    <div class="etiqueta">Últimos datos cargados</div>
+    <div class="valor valor-texto">{{ ultimo_dato or "—" }}</div>
+    <div class="detalle">fecha del último movimiento</div>
+  </article>
+</section>
+
+{% if avance.porcentaje < 100 %}
+  <div class="aviso aviso-alerta">
+    Faltan contar {{ avance.total - avance.contados }} repuestos. Para ellos el stock es todo lo comprado desde enero,
+    así que la compra sugerida sale más baja de lo real. Están marcados como "Sin contar".
+  </div>
+{% endif %}
+
+<section class="panel">
+  <h2>{{ "Todos los repuestos" if ver_todos else "Qué comprar" }}</h2>
+  {% if filas %}
+    <table class="tabla">
+      <thead>
+        <tr>
+          <th>Repuesto</th>
+          <th>Tipo de uso</th>
+          <th class="numero">Por mes</th>
+          <th class="numero">Se necesita en {{ horizonte }} días</th>
+          <th class="numero">En stock</th>
+          <th class="numero">Comprar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in filas %}
+          {% set comprar = f.a_comprar(horizonte) %}
+          <tr>
+            <td>
+              <a class="enlace" href="{{ url_for('ficha_repuesto', repuesto_id=f.repuesto.id) }}">{{ f.repuesto.codigo }}</a>
+              <div class="secundario">{{ f.marca }} · {{ f.categoria }}</div>
+            </td>
+            <td>{{ f.metodo }}</td>
+            <td class="numero">{{ texto_cantidad(f.repuesto, f.prediccion.demanda_mensual_estimada) }}</td>
+            <td class="numero">{{ texto_cantidad(f.repuesto, f.necesita(horizonte)) }}</td>
+            <td class="numero">
+              {{ texto_cantidad(f.repuesto, f.repuesto.stock_actual) }}
+              {% if not f.contado %}<div><span class="badge badge-neutro">Sin contar</span></div>{% endif %}
+            </td>
+            <td class="numero">
+              {% if comprar > 0 %}<strong>{{ texto_cantidad(f.repuesto, comprar) }}</strong>
+              {% else %}<span class="secundario">Alcanza</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% elif ver_todos %}
+    <p class="vacio">No hay repuestos activos.</p>
+  {% else %}
+    <p class="vacio">Con el stock actual alcanza para los próximos {{ horizonte }} días: no hace falta comprar nada.
+      Marcá "Ver también los que no hace falta comprar" para ver la predicción de todos.</p>
+  {% endif %}
+</section>
+
+<p class="secundario nota">
+  Cómo se calcula: con las compras de los últimos 12 meses (todavía no hay usos cargados). Si un repuesto se compra
+  casi todos los meses se usa un promedio que le da más peso a lo reciente (<em>uso regular</em>); si se compra
+  de vez en cuando, el método de Croston (<em>uso esporádico</em>). Los meses sin datos cuentan como 0.
+</p>
+{% endblock %}

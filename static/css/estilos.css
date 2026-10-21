@@ -208,3 +208,6 @@ a.boton { text-decoration: none; display: inline-block; }
 [hidden] { display: none !important; }
 .ayuda-destacada { font-size: 18px; font-weight: 600; color: var(--pino-900); }
 .ayuda { font-weight: 400; font-size: 13px; color: var(--pino-700); min-height: 18px; }
+
+/* Predicción */
+.kpis-3 { grid-template-columns: repeat(3, 1fr); }
