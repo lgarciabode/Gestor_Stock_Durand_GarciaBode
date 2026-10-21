@@ -140,13 +140,8 @@ def mostrar_demo():
     servicio = ServicioPrediccion(gestor_bd=repo)
 
     # Ejecutamos la predicción
-<<<<<<< HEAD
     resultados = servicio.generar_predicciones_catalogo(meses_a_proyectar=3, fecha_referencia = "2026-10-01")
     
-=======
-    resultados = servicio.generar_predicciones_catalogo(meses_a_proyectar=3)
-
->>>>>>> ee2ce1f1857b369ad2d99aafc7fecc2c59d98010
     # Imprimimos los resultados
     for r in resultados:
         print(f"ID: {r.repuesto_id} | {r.descripcion}")
