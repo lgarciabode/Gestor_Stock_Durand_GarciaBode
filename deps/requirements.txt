@@ -3,3 +3,4 @@ openpyxl==3.1.5
 python-dotenv==1.2.4
 Flask==3.1.3
 auth-module[flask] @ git+https://github.com/FIUNER-LICA/auth-module.git@v1.2.0
+fpdf2==2.8.9

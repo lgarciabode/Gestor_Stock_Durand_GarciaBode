@@ -145,3 +145,14 @@ details summary { cursor: pointer; }
 }
 .opcion:has(input:checked) { border-color: var(--pino-500); background: var(--pino-100); color: var(--pino-700); font-weight: 600; }
 .aviso-alerta { background: var(--cobrizo-100); color: var(--cobrizo-700); }
+
+/* ---------- Historial de movimientos ---------- */
+.filtros { display: grid; grid-template-columns: 150px 150px 190px 1fr auto; gap: 14px; align-items: end; }
+.filtros-botones { display: flex; gap: 12px; align-items: center; }
+.enlace { color: var(--pino-700); font-weight: 600; }
+a.boton { text-decoration: none; display: inline-block; }
+.resumen { margin: 0; }
+.tabla .numero { text-align: right; white-space: nowrap; }
+.cantidad-ingreso { color: var(--pino-700); font-weight: 600; }
+.cantidad-egreso { color: var(--cobrizo-700); font-weight: 600; }
+.cantidad-ajuste { color: var(--plomo-700); font-weight: 600; }

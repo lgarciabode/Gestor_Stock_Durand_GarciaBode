@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+{% block titulo %}Movimientos{% endblock %}
+{% block encabezado %}Movimientos{% endblock %}
+{% block subtitulo %}Lo que entró, salió y se contó, del más nuevo al más viejo{% endblock %}
+
+{% block acciones %}
+  {% if not error %}
+    <a class="boton boton-secundario" href="{{ url_for('descargar_movimientos', formato='excel', **parametros_filtro) }}">Descargar Excel</a>
+    <a class="boton boton-secundario" href="{{ url_for('descargar_movimientos', formato='pdf', **parametros_filtro) }}">Descargar PDF</a>
+  {% endif %}
+{% endblock %}
+
+{% block contenido %}
+{% if error %}
+  <div class="aviso aviso-danger" role="alert">{{ error }}</div>
+{% endif %}
+
+<section class="panel">
+  <form method="get" class="filtros">
+    <label class="campo">
+      Desde
+      <input type="date" name="desde" value="{{ datos.desde }}" max="{{ hoy }}">
+    </label>
+    <label class="campo">
+      Hasta
+      <input type="date" name="hasta" value="{{ datos.hasta }}" max="{{ hoy }}">
+    </label>
+    <label class="campo">
+      Movimiento
+      <select name="tipo">
+        <option value="">Todos</option>
+        {% for valor, texto in tipos.items() %}
+          <option value="{{ valor }}" {{ 'selected' if datos.tipo == valor }}>{{ texto }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="campo campo-ancho">
+      Repuesto
+      <input type="text" name="repuesto" list="lista-repuestos" value="{{ datos.repuesto }}"
+             placeholder="Todos" autocomplete="off">
+      <datalist id="lista-repuestos">
+        {% for texto in opciones %}<option value="{{ texto }}">{% endfor %}
+      </datalist>
+    </label>
+    <div class="filtros-botones">
+      <button type="submit" class="boton">Filtrar</button>
+      <a href="{{ url_for('movimientos') }}" class="enlace">Limpiar</a>
+    </div>
+  </form>
+</section>
+
+{% if not error %}
+<section class="panel">
+  <p class="resumen">
+    <strong>{{ filas|length }} {{ "movimiento" if filas|length == 1 else "movimientos" }}</strong>
+    {% for valor, texto in tipos.items() %}
+      <span class="secundario"> · {{ texto }}: {{ conteo[valor] }}</span>
+    {% endfor %}
+  </p>
+  {% if filas %}
+    <table class="tabla">
+      <thead>
+        <tr>
+          <th>Fecha</th><th>Movimiento</th><th>Repuesto</th><th class="numero">Cantidad</th><th>Proveedor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila in filas %}
+          <tr>
+            <td class="fecha">{{ fila.fecha_texto }}</td>
+            <td>{{ fila.tipo_texto }}</td>
+            <td>
+              <strong>{{ fila.codigo }}</strong>
+              <div class="secundario">{{ fila.marca }} · {{ fila.categoria }}</div>
+            </td>
+            <td class="numero cantidad-{{ fila.tipo|lower }}">{{ fila.cantidad_texto }}{% if fila.unidad_medida == 'cm' %} cm{% endif %}</td>
+            <td>{{ fila.proveedor or "—" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="vacio">No hay movimientos con este filtro. Probá con otras fechas.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

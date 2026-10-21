@@ -1,6 +1,6 @@
 # 🔔 Módulo de alertas — análisis y diseño
 
-> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6 a 9 — conteo físico, conteo inicial con planilla, pantalla de alertas y registro de movimientos — hechos el 20/10/2026).
+> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6 a 10 — conteo físico, conteo inicial con planilla, pantalla de alertas, registro de movimientos e historial — hechos el 20/10/2026).
 > Diagrama de clases: `docs/diagrama_UML.md` (sección 2) y `docs/diagramaUML.puml`.
 
 El módulo avisa cuándo hay que reponer un repuesto, cuándo está en riesgo de faltar y cuándo hay stock de más. Cada repuesto tiene **sus propios umbrales**, calculados a partir de cuánto se usa: un mismo stock mínimo para todos no sirve (lo mostró el EDA, `templates/eda_repuestos.ipynb`).
@@ -220,4 +220,11 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
         - El repuesto se elige con un buscador "código · marca · categoría" (reconocer antes que recordar); también acepta el código solo. Con un error, el formulario muestra el motivo y conserva lo cargado; si sale bien, vuelve limpio para cargar otro (POST → redirect → GET).
         - Las reglas están en `ServicioMovimientos`, no en Flask: la misma lógica sirve para otra interfaz.
 
-    10. Pendiente: conteo real en el taller; pantalla "Movimientos" (historial con filtros y descarga).
+    10. ~~Historial de movimientos~~ (20/10): `modules/reportes.py` (`FiltroMovimientos`, `FilaReporte`, `ConsultaMovimientos`, `ExportadorReporte` abstracta, `ExportadorExcel`, `ExportadorPDF`, `FiltroInvalidoError`), rutas `GET /movimientos` y `GET /movimientos/descargar/<excel|pdf>`, template `templates/movimientos.html`. Dependencia nueva: `fpdf2` (PDF, código abierto, solo Python) en `deps/requirements.txt`. Pruebas: `tests/test_reportes.py` (15) y `tests/test_app_historial.py` (8, se saltean sin Flask).
+
+        - Filtros por fechas (por defecto, los últimos 30 días), tipo de movimiento y repuesto (mismo buscador que "Registrar movimiento"). Resumen con la cantidad de cada tipo; no se suman cantidades porque mezclan unidades y cm.
+        - Las descargas repiten el filtro de la pantalla: se baja exactamente lo que se ve. El Excel guarda la cantidad como número con signo (se puede sumar); el PDF va en A4 apaisada con el encabezado repetido en cada página.
+        - Los exportadores son el patrón **Strategy** (tercera vez en el proyecto, después de los parsers y las reglas de alerta): la pantalla no sabe qué formato arma.
+        - Contrato de `FiltroMovimientos` (invariante): fechas válidas, desde ≤ hasta y tipo conocido; si no, `FiltroInvalidoError` y la pantalla muestra el motivo.
+
+    11. Pendiente: conteo real en el taller; pantallas "Catálogo", "Proveedores" y "Dashboard".

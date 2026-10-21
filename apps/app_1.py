@@ -10,11 +10,12 @@ https://github.com/FIUNER-LICA/auth-module
 Ejecutar desde la raíz del proyecto:
     flask --app apps.app_1 run --debug
 """
+import io
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 
-from flask import (Flask, flash, g, redirect, render_template, request,
-                   session, url_for)
+from flask import (Flask, abort, flash, g, redirect, render_template, request,
+                   send_file, session, url_for)
 
 from auth_module.core.auth_manager import AuthManager
 from auth_module.core.db.sqlite_repository import SQLiteUserRepository
@@ -32,6 +33,9 @@ from modules.crud import (AlertaNoEncontradaError, GestorInventarioBD,
                           RepositorioAlertas)
 from modules.modelos import EstadoStock
 from modules.movimientos import MovimientoInvalidoError, ServicioMovimientos
+from modules.reportes import (ETIQUETAS_TIPO_MOVIMIENTO, EXPORTADORES,
+                              ConsultaMovimientos, FiltroInvalidoError,
+                              FiltroMovimientos, contar_por_tipo)
 
 # Color de la etiqueta (badge) de cada estado. Es una decisión visual, por eso
 # vive en la capa de presentación y no en el modelo.
@@ -163,6 +167,34 @@ def mensaje_de_resultado(tipo: str, cantidad: float, resultado) -> str:
     return f"Listo. {accion} {texto_cantidad(rep, cantidad)} de {rep.codigo}. Ahora hay {texto_cantidad(rep, rep.stock_actual)}."
 
 
+# ---------------------------------------------------------------- Historial (filtro desde la URL)
+
+DIAS_POR_DEFECTO = 30
+
+
+def filtro_desde_pedido(opciones: dict) -> tuple:
+    """Arma el FiltroMovimientos con lo que vino en la URL (?desde=&hasta=&tipo=&repuesto=).
+
+    Sin fechas se muestran los últimos 30 días. Devuelve (datos_del_formulario, filtro);
+    si algo no es válido lanza FiltroInvalidoError con un mensaje para el usuario.
+    """
+    hoy = date.today()
+    datos = {
+        "desde": request.args.get("desde", "").strip() or (hoy - timedelta(days=DIAS_POR_DEFECTO)).isoformat(),
+        "hasta": request.args.get("hasta", "").strip() or hoy.isoformat(),
+        "tipo": request.args.get("tipo", "").strip(),
+        "repuesto": request.args.get("repuesto", "").strip(),
+    }
+    repuesto_id = None
+    if datos["repuesto"]:
+        rep = buscar_repuesto_elegido(opciones, datos["repuesto"])
+        if rep is None:
+            raise FiltroInvalidoError("Elegí un repuesto de la lista (o dejalo vacío para ver todos).")
+        repuesto_id = rep.id
+    filtro = FiltroMovimientos(datos["desde"], datos["hasta"], datos["tipo"] or None, repuesto_id)
+    return datos, filtro
+
+
 # ---------------------------------------------------------------- Rutas
 
 def registrar_rutas(app: Flask) -> None:
@@ -278,6 +310,53 @@ def registrar_rutas(app: Flask) -> None:
             proveedores=gestor.obtener_proveedores(solo_activos=True),
             hoy=hoy,
         ), (400 if error else 200)
+
+    @app.route("/movimientos")
+    @login_required
+    def movimientos():
+        """Historial de movimientos con filtros por fecha, tipo y repuesto."""
+        conexion = obtener_bd()
+        opciones = opciones_de_repuestos(GestorInventarioBD(conexion))
+        filas, error = [], None
+        try:
+            datos, filtro = filtro_desde_pedido(opciones)
+            filas = ConsultaMovimientos(conexion).buscar(filtro)
+        except FiltroInvalidoError as e:
+            error = str(e)
+            datos = {k: request.args.get(k, "") for k in ("desde", "hasta", "tipo", "repuesto")}
+        return render_template(
+            "movimientos.html",
+            datos=datos,
+            filas=filas,
+            error=error,
+            conteo=contar_por_tipo(filas),
+            tipos=ETIQUETAS_TIPO_MOVIMIENTO,
+            opciones=opciones,
+            hoy=date.today().isoformat(),
+            # Los links de descarga repiten el mismo filtro de la pantalla
+            parametros_filtro={k: v for k, v in datos.items() if v},
+        ), (400 if error else 200)
+
+    @app.route("/movimientos/descargar/<formato>")
+    @login_required
+    def descargar_movimientos(formato: str):
+        """Descarga lo que se ve en la pantalla, en Excel o PDF."""
+        exportador = EXPORTADORES.get(formato)
+        if exportador is None:
+            abort(404)
+        conexion = obtener_bd()
+        try:
+            _, filtro = filtro_desde_pedido(opciones_de_repuestos(GestorInventarioBD(conexion)))
+        except FiltroInvalidoError as e:
+            flash(str(e), "warning")
+            return redirect(url_for("movimientos"))
+        contenido = exportador.exportar(ConsultaMovimientos(conexion).buscar(filtro), filtro)
+        return send_file(
+            io.BytesIO(contenido),
+            mimetype=exportador.tipo_mime,
+            as_attachment=True,
+            download_name=f"movimientos_{filtro.desde}_{filtro.hasta}.{exportador.extension}",
+        )
 
     @app.context_processor
     def datos_del_menu():

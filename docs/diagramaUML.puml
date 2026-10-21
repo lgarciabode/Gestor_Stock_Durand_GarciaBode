@@ -288,6 +288,47 @@ package "Movimientos del día a día (modules/movimientos.py)" {
     }
 }
 
+package "Historial y descargas (modules/reportes.py)" {
+    class FiltroMovimientos <<frozen>> {
+        +desde: str
+        +hasta: str
+        +tipo: Optional<str>
+        +repuesto_id: Optional<int>
+        +descripcion(): str
+    }
+
+    class FilaReporte <<frozen>> {
+        +fecha: str
+        +tipo: str
+        +codigo: str
+        +marca: str
+        +categoria: str
+        +cantidad: float
+        +unidad_medida: str
+        +proveedor: str
+        +como_tupla(): tuple
+    }
+
+    class ConsultaMovimientos {
+        -conexion: Connection
+        +buscar(filtro: FiltroMovimientos): List<FilaReporte>
+    }
+
+    abstract class ExportadorReporte <<abstract>> {
+        +extension: str
+        +tipo_mime: str
+        {abstract} +exportar(filas: List<FilaReporte>, filtro: FiltroMovimientos): bytes
+    }
+
+    class ExportadorExcel {
+        +exportar(filas: List<FilaReporte>, filtro: FiltroMovimientos): bytes
+    }
+
+    class ExportadorPDF {
+        +exportar(filas: List<FilaReporte>, filtro: FiltroMovimientos): bytes
+    }
+}
+
 ' ---------------- Relaciones del dominio ----------------
 Repuesto "0..*" --> "1" Marca : pertenece a
 Repuesto "0..*" --> "1" Categoria : pertenece a
@@ -339,6 +380,13 @@ ServicioConteoInicial --> MotorAlertas : revisa contados
 ServicioConteoInicial ..> ServicioParametrosStock : crea (fábrica)
 ServicioConteoInicial ..> LecturaPlanilla : aplica
 ServicioConteoInicial ..> ResultadoConteo : crea
+
+' ---------------- Historial y descargas: Strategy (exportadores) ----------------
+ConsultaMovimientos ..> FiltroMovimientos : usa
+ConsultaMovimientos ..> FilaReporte : crea
+ExportadorReporte <|-- ExportadorExcel
+ExportadorReporte <|-- ExportadorPDF
+ExportadorReporte ..> FilaReporte : exporta
 
 ' ---------------- Movimientos del día a día ----------------
 ServicioMovimientos --> GestorInventarioBD : registra

@@ -1,6 +1,6 @@
 # 📐 Diagrama de Clases UML — Gestor de Inventario
 
-> Actualizado el 20/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada`, **módulo de alertas**, **conteo inicial** con planilla y **registro de movimientos**.
+> Actualizado el 20/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada`, **módulo de alertas**, **conteo inicial** con planilla y **registro de movimientos** e **historial con descargas**.
 > La misma información está en `diagramaUML.puml` (PlantUML) y en la imagen `Diagrama_Clases_Gestor_Stock.png`.
 
 **Notación** (Unidades 2 y 3 de POO): `+` público, `-` privado, `*` método abstracto, `<<abstract>>` clase abstracta (ABC).
@@ -340,4 +340,54 @@ classDiagram
     ServicioMovimientos --> MotorAlertas : revisa el repuesto movido
     ServicioMovimientos ..> MovimientoStock : crea
     ServicioMovimientos ..> ResultadoMovimiento : crea
+```
+
+## 5. Historial y descargas (modules/reportes.py)
+
+`ConsultaMovimientos` solo lee. Los exportadores son otra vez el patrón **Strategy**: la pantalla elige `EXPORTADORES["excel"]` o `EXPORTADORES["pdf"]` y llama a `exportar()` sin saber cuál es. Un formato nuevo (CSV) sería una clase más.
+
+```mermaid
+classDiagram
+    class FiltroMovimientos {
+        <<frozen>>
+        +str desde
+        +str hasta
+        +Optional~str~ tipo
+        +Optional~int~ repuesto_id
+        +descripcion() str
+    }
+    class FilaReporte {
+        <<frozen>>
+        +str fecha
+        +str tipo
+        +str codigo
+        +str marca
+        +str categoria
+        +float cantidad
+        +str unidad_medida
+        +str proveedor
+        +como_tupla() tuple
+    }
+    class ConsultaMovimientos {
+        -Connection conexion
+        +buscar(filtro: FiltroMovimientos) List~FilaReporte~
+    }
+    class ExportadorReporte {
+        <<abstract>>
+        +str extension
+        +str tipo_mime
+        +exportar(filas, filtro)* bytes
+    }
+    class ExportadorExcel {
+        +exportar(filas, filtro) bytes
+    }
+    class ExportadorPDF {
+        +exportar(filas, filtro) bytes
+    }
+
+    ConsultaMovimientos ..> FiltroMovimientos : usa
+    ConsultaMovimientos ..> FilaReporte : crea
+    ExportadorReporte <|-- ExportadorExcel
+    ExportadorReporte <|-- ExportadorPDF
+    ExportadorReporte ..> FilaReporte : exporta
 ```
