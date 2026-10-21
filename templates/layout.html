@@ -25,7 +25,10 @@
       <span class="pendiente" title="Próximamente">Movimientos</span>
       <span class="pendiente" title="Próximamente">Registrar movimiento</span>
       <span class="pendiente" title="Próximamente">Catálogo</span>
-      <span class="pendiente" title="Próximamente">Alertas</span>
+      <a href="{{ url_for('alertas') }}" class="{{ 'activo' if request.endpoint == 'alertas' }}">
+        Alertas
+        {% if alertas_abiertas %}<span class="contador" title="Alertas sin atender">{{ alertas_abiertas }}</span>{% endif %}
+      </a>
       <span class="pendiente" title="Próximamente">Proveedores</span>
       <span class="pendiente" title="Próximamente">Dashboard</span>
     </nav>

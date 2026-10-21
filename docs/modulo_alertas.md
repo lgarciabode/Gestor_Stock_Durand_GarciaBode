@@ -1,6 +1,6 @@
 # 🔔 Módulo de alertas — análisis y diseño
 
-> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6 y 7 — conteo físico y conteo inicial con planilla — hechos el 20/10/2026).
+> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6, 7 y 8 — conteo físico, conteo inicial con planilla y pantalla de alertas — hechos el 20/10/2026).
 > Diagrama de clases: `docs/diagrama_UML.md` (sección 2) y `docs/diagramaUML.puml`.
 
 El módulo avisa cuándo hay que reponer un repuesto, cuándo está en riesgo de faltar y cuándo hay stock de más. Cada repuesto tiene **sus propios umbrales**, calculados a partir de cuánto se usa: un mismo stock mínimo para todos no sirve (lo mostró el EDA, `templates/eda_repuestos.ipynb`).
@@ -198,4 +198,18 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
         - Después de guardar, los umbrales se recalculan con el período hasta la fecha del conteo (por eso el `ServicioParametrosStock` se crea con una *fábrica* recién en ese momento) y las alertas se revisan **solo para los repuestos contados**: los demás todavía tienen el stock inflado y darían avisos falsos.
         - De paso se corrigió la concordancia de los mensajes: "queda 1 unidad" / "quedan 3 unidades".
 
-    8. Pendiente: hacer el conteo real en el taller; después, la pantalla de alertas en la interfaz web (lista de abiertas + botón "Ya lo pedí").
+    8. ~~Pantalla de alertas~~ (20/10): rutas en `apps/app_1.py`, template `templates/alertas.html`, contador en el menú (`templates/layout.html`) y estilos de tabla y botones (`static/css/estilos.css`). Pruebas: `tests/test_app_alertas.py` (10 pruebas con el cliente de prueba de Flask; se saltean si Flask no está instalado).
+
+        | Ruta | Qué hace |
+        |---|---|
+        | `GET /alertas` | Lista las alertas abiertas, lo más urgente primero: aviso, repuesto (código, marca, categoría), detalle, desde cuándo y el botón. Debajo, desplegable con los repuestos "sin datos todavía" (sin umbrales: no pueden generar alertas). |
+        | `POST /alertas/<id>/atendida` | Botón **"Ya lo pedí"** (en "Sobra stock" dice **"Entendido"**, porque no hay nada que pedir). Cierra la alerta; queda en el historial. |
+        | `POST /alertas/revisar` | Botón **"Revisar todo"**: aplica las reglas a todos los repuestos activos sin duplicar las abiertas. |
+
+        - La capa de presentación no decide nada del negocio: le pide los datos a `RepositorioAlertas`, `MotorAlertas` y `GestorInventarioBD` y los muestra (arquitectura en capas).
+        - Las acciones son `POST` y después redirigen a la lista (patrón POST → redirect → GET): recargar la página no repite la acción, y un link no puede cerrar una alerta por accidente.
+        - Cada acción confirma con un mensaje (flash), y el menú muestra cuántas alertas hay sin atender.
+
+        > **Cuidado:** hasta que se haga el conteo inicial, "Revisar todo" genera alertas falsas (con el histórico, 31), porque el stock de los repuestos no contados es la suma de todas las compras.
+
+    9. Pendiente: conteo real en el taller; pantalla para registrar movimientos (que llame a `motor.revisar` después de cada egreso o ingreso).

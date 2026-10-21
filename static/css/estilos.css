@@ -1,0 +1,128 @@
+/* ============================================================
+   Estilos del Gestor de Stock — Jannon & Durand
+   Paleta del mockup de Figma: verde pino, naranja cobrizo, gris plomo.
+   ============================================================ */
+:root {
+  --pino-900: #163A2C;  --pino-700: #1F4D3A;  --pino-500: #2E6B52;  --pino-100: #E3EEE8;
+  --cobrizo-700: #9A4F22; --cobrizo-500: #B8632F; --cobrizo-100: #F7E6DA;
+  --plomo-900: #262C30; --plomo-700: #3F474D; --plomo-500: #5F6B73; --plomo-300: #B9C0C5;
+  --plomo-200: #DCE0E3; --plomo-100: #EEF0F2; --plomo-50: #F6F7F8;
+  --critico-600: #A33A2B; --critico-100: #F6DEDA;
+  --radio: 10px;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; display: flex; min-height: 100vh;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 14px;
+  background: var(--plomo-50); color: var(--plomo-900);
+}
+h1, h2 { margin: 0; }
+
+/* ---------- Menú lateral ---------- */
+.sidebar {
+  width: 248px; flex-shrink: 0; background: var(--pino-900);
+  padding: 28px 16px 24px; display: flex; flex-direction: column; gap: 4px;
+  position: sticky; top: 0; height: 100vh;
+}
+.marca { padding: 0 14px 28px; color: #fff; display: flex; flex-direction: column; gap: 2px; }
+.marca strong { font-size: 17px; }
+.marca small { color: var(--pino-100); font-size: 12px; }
+.marca-barra { width: 32px; height: 4px; border-radius: 2px; background: var(--cobrizo-500); margin-bottom: 10px; }
+
+.sidebar nav { display: flex; flex-direction: column; gap: 4px; }
+.sidebar nav a, .sidebar nav .pendiente {
+  padding: 10px 14px; border-radius: 6px; font-weight: 500; text-decoration: none; color: var(--pino-100);
+}
+.sidebar nav a:hover { background: var(--pino-700); }
+.sidebar nav a.activo { background: var(--pino-500); color: #fff; font-weight: 600; }
+.sidebar nav .pendiente { opacity: .45; cursor: default; }
+
+.usuario {
+  margin-top: auto; padding: 12px 14px 0; border-top: 1px solid var(--pino-700);
+  display: flex; align-items: center; gap: 10px; color: #fff; font-size: 13px;
+}
+.usuario div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.usuario strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usuario a { color: var(--pino-100); font-size: 12px; }
+.usuario-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--cobrizo-500); flex-shrink: 0; }
+
+/* ---------- Contenido ---------- */
+.contenido { flex: 1; min-width: 0; padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; }
+.encabezado { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.encabezado h1 { font-size: 26px; }
+.subtitulo { margin: 4px 0 0; color: var(--plomo-500); }
+.acciones { display: flex; gap: 12px; align-items: flex-end; }
+
+/* ---------- Mensajes (flash) ---------- */
+.aviso { padding: 12px 16px; border-radius: 8px; background: var(--pino-100); color: var(--pino-700); }
+.aviso-danger, .aviso-warning { background: var(--critico-100); color: var(--critico-600); }
+
+/* ---------- Tarjetas de indicadores ---------- */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.tarjeta {
+  background: #fff; border: 1px solid var(--plomo-200); border-radius: var(--radio);
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;
+}
+.tarjeta::before { content: ""; width: 28px; height: 4px; border-radius: 2px; background: var(--cobrizo-500); }
+.tarjeta .etiqueta { color: var(--plomo-500); font-size: 13px; font-weight: 500; }
+.tarjeta .valor { font-size: 30px; font-weight: 700; }
+.tarjeta .detalle { color: var(--plomo-500); font-size: 12px; }
+
+/* ---------- Paneles ---------- */
+.panel {
+  background: #fff; border: 1px solid var(--plomo-200); border-radius: var(--radio);
+  padding: 20px 24px; display: flex; flex-direction: column; gap: 12px;
+}
+.panel h2 { font-size: 16px; }
+.lista-estados { list-style: none; margin: 0; padding: 0; }
+.lista-estados li {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--plomo-200);
+}
+.lista-estados li:last-child { border-bottom: 0; }
+
+/* ---------- Etiquetas de estado (badges) ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+}
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.badge-ok         { background: var(--pino-100);    color: var(--pino-700); }
+.badge-reorden    { background: var(--cobrizo-100); color: var(--cobrizo-700); }
+.badge-critico    { background: var(--critico-100); color: var(--critico-600); }
+.badge-sobrestock { background: var(--plomo-200);   color: var(--plomo-700); }
+.badge-neutro     { background: var(--plomo-100);   color: var(--plomo-500); }
+
+/* ---------- Contador del menú (alertas sin atender) ---------- */
+.sidebar nav a { display: flex; justify-content: space-between; align-items: center; }
+.contador {
+  min-width: 22px; padding: 1px 7px; border-radius: 999px; text-align: center;
+  background: var(--cobrizo-500); color: #fff; font-size: 12px; font-weight: 700;
+}
+
+/* ---------- Botones ---------- */
+.boton {
+  padding: 8px 14px; border-radius: 6px; border: 1px solid var(--pino-500);
+  background: var(--pino-500); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.boton:hover { background: var(--pino-700); }
+.boton-secundario { background: #fff; color: var(--pino-700); }
+.boton-secundario:hover { background: var(--pino-100); }
+
+/* ---------- Tablas ---------- */
+.tabla { width: 100%; border-collapse: collapse; }
+.tabla th {
+  text-align: left; font-size: 12px; font-weight: 600; color: var(--plomo-500);
+  padding: 0 12px 10px; border-bottom: 1px solid var(--plomo-200);
+}
+.tabla td { padding: 12px; border-bottom: 1px solid var(--plomo-200); vertical-align: middle; }
+.tabla tr:last-child td { border-bottom: 0; }
+.tabla .fecha { color: var(--plomo-500); white-space: nowrap; }
+.tabla .accion { text-align: right; }
+.secundario { color: var(--plomo-500); font-size: 12px; }
+.vacio { margin: 0; color: var(--plomo-500); }
+details summary { cursor: pointer; }
+.lista-simple { columns: 4; margin: 12px 0 0; padding-left: 18px; color: var(--plomo-700); }
+.tabla .badge { white-space: nowrap; }

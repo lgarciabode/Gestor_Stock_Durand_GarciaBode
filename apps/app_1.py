@@ -13,7 +13,7 @@ Ejecutar desde la raíz del proyecto:
 from collections import Counter
 from datetime import date
 
-from flask import Flask, g, render_template
+from flask import Flask, flash, g, redirect, render_template, session, url_for
 
 from auth_module.core.auth_manager import AuthManager
 from auth_module.core.db.sqlite_repository import SQLiteUserRepository
@@ -23,9 +23,12 @@ from auth_module.flask_ext.extension import FlaskExtension
 
 from config import (BASE_DIR, DATABASE_URL, RUTA_BD_USUARIOS,
                     RUTA_EXCEL_HISTORICO, SECRET_KEY)
-from modules.alertas import ETIQUETAS_ESTADO
+from modules.alertas import (ETIQUETAS_ATENDER_ALERTA, ETIQUETAS_ESTADO,
+                             ETIQUETAS_TIPO_ALERTA, MotorAlertas,
+                             reglas_por_defecto)
 from modules.base_datos import inicializar_si_hace_falta, obtener_conexion
-from modules.crud import GestorInventarioBD
+from modules.crud import (AlertaNoEncontradaError, GestorInventarioBD,
+                          RepositorioAlertas)
 from modules.modelos import EstadoStock
 
 # Color de la etiqueta (badge) de cada estado. Es una decisión visual, por eso
@@ -38,6 +41,13 @@ CLASE_CSS_ESTADO = {
     EstadoStock.SOBRESTOCK: "sobrestock",
     EstadoStock.SIN_DATOS: "neutro",
     EstadoStock.INACTIVO: "neutro",
+}
+
+# Mismo criterio para los tipos de alerta (reutiliza los colores de los estados).
+CLASE_CSS_TIPO_ALERTA = {
+    "CRITICO": "critico",
+    "REORDEN": "reorden",
+    "SOBRESTOCK": "sobrestock",
 }
 
 
@@ -77,6 +87,35 @@ def configurar_autenticacion(app: Flask) -> None:
     FlaskExtension(app, auth_manager, login_redirect_endpoint="index")
 
 
+# ---------------------------------------------------------------- Alertas (datos para la pantalla)
+
+def filas_de_alertas(gestor: GestorInventarioBD, alertas) -> list:
+    """Arma lo que muestra cada renglón de la tabla de alertas.
+
+    Junta la alerta con los datos del repuesto (código, marca, categoría).
+    Es preparación de datos para la vista: no decide nada del negocio.
+    """
+    marcas = {m.id: m.nombre for m in gestor.obtener_marcas()}
+    categorias = {c.id: c.nombre for c in gestor.obtener_categorias()}
+    filas = []
+    for alerta in alertas:
+        rep = gestor.obtener_repuesto_id(alerta.repuesto_id)
+        filas.append({
+            "id": alerta.id,
+            "tipo": ETIQUETAS_TIPO_ALERTA[alerta.tipo],
+            "clase_css": CLASE_CSS_TIPO_ALERTA[alerta.tipo],
+            "codigo": rep.codigo,
+            "marca": marcas.get(rep.marca_id, ""),
+            "categoria": categorias.get(rep.categoria_id, ""),
+            # El mensaje empieza con "<tipo> — <código>: ..."; eso ya está en
+            # otras columnas, así que se muestra solo el detalle.
+            "detalle": alerta.mensaje.split(" — ", 1)[-1].split(": ", 1)[-1],
+            "desde": date.fromisoformat(alerta.fecha).strftime("%d/%m/%Y"),
+            "boton": ETIQUETAS_ATENDER_ALERTA[alerta.tipo],
+        })
+    return filas
+
+
 # ---------------------------------------------------------------- Rutas
 
 def registrar_rutas(app: Flask) -> None:
@@ -101,6 +140,52 @@ def registrar_rutas(app: Flask) -> None:
             clases_css=CLASE_CSS_ESTADO,
             Estado=EstadoStock,
         )
+
+    @app.route("/alertas")
+    @login_required
+    def alertas():
+        """Lista de alertas abiertas, lo más urgente primero."""
+        gestor = GestorInventarioBD(obtener_bd())
+        abiertas = RepositorioAlertas(obtener_bd()).obtener_abiertas()
+        # Sin umbrales no se puede avisar nada (con stock 0 su estado es "Agotado", igual van acá)
+        sin_datos = [r for r in gestor.obtener_repuestos() if not r.tiene_umbrales()]
+        return render_template(
+            "alertas.html",
+            filas=filas_de_alertas(gestor, abiertas),
+            sin_datos=sin_datos,
+        )
+
+    @app.route("/alertas/<int:alerta_id>/atendida", methods=["POST"])
+    @login_required
+    def atender_alerta(alerta_id: int):
+        """Botón "Ya lo pedí" / "Entendido": cierra la alerta (queda en el historial)."""
+        try:
+            RepositorioAlertas(obtener_bd()).marcar_atendida(alerta_id)
+            flash("Listo: la alerta quedó cerrada.", "success")
+        except AlertaNoEncontradaError:
+            flash("Esa alerta ya estaba cerrada o no existe.", "warning")
+        # POST -> redirect -> GET: recargar la página no repite la acción.
+        return redirect(url_for("alertas"))
+
+    @app.route("/alertas/revisar", methods=["POST"])
+    @login_required
+    def revisar_alertas():
+        """Botón "Revisar todo": aplica las reglas a todos los repuestos activos."""
+        conexion = obtener_bd()
+        motor = MotorAlertas(reglas_por_defecto(), RepositorioAlertas(conexion))
+        nuevas = motor.revisar_todos(GestorInventarioBD(conexion).obtener_repuestos())
+        if nuevas:
+            flash(f"Se encontraron {len(nuevas)} alertas nuevas.", "success")
+        else:
+            flash("No hay alertas nuevas.", "success")
+        return redirect(url_for("alertas"))
+
+    @app.context_processor
+    def datos_del_menu():
+        """Cantidad de alertas abiertas para el contador del menú lateral."""
+        if "email" not in session:
+            return {}
+        return {"alertas_abiertas": len(RepositorioAlertas(obtener_bd()).obtener_abiertas())}
 
 
 # ---------------------------------------------------------------- Fábrica

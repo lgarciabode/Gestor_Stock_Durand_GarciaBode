@@ -23,6 +23,14 @@ ETIQUETAS_TIPO_ALERTA = {
 
 ETIQUETA_ATENDER_ALERTA = "Ya lo pedí"
 
+# Texto del botón que cierra una alerta. Con "Sobra stock" no hay nada que
+# pedir: el usuario solo confirma que lo vio.
+ETIQUETAS_ATENDER_ALERTA = {
+    "REORDEN": ETIQUETA_ATENDER_ALERTA,
+    "CRITICO": ETIQUETA_ATENDER_ALERTA,
+    "SOBRESTOCK": "Entendido",
+}
+
 ETIQUETAS_ESTADO = {
     EstadoStock.DISPONIBLE: "Disponible",
     EstadoStock.HAY_QUE_PEDIR: "Hay que pedir",
