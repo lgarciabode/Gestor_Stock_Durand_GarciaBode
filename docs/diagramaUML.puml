@@ -228,6 +228,49 @@ package "Módulo de alertas (modules/alertas.py) — diseño" {
     }
 }
 
+package "Conteo inicial (modules/conteo.py)" {
+    class PlanillaConteo {
+        +generar(ruta: str, repuestos: List<Repuesto>, marcas: Dict<int, str>, categorias: Dict<int, str>): int
+        +leer(ruta: str): LecturaPlanilla
+    }
+
+    class LecturaPlanilla {
+        +filas: List<FilaConteo>
+        +errores: List<ErrorConteo>
+    }
+
+    class FilaConteo <<frozen>> {
+        +fila: int
+        +repuesto_id: int
+        +codigo: str
+        +cantidad_contada: Optional<float>
+    }
+
+    class ErrorConteo <<frozen>> {
+        +fila: int
+        +codigo: str
+        +mensaje: str
+    }
+
+    class ServicioConteoInicial {
+        -gestor: GestorInventarioBD
+        -motor: MotorAlertas
+        -fabrica_parametros: Callable
+        +validar(filas: List<FilaConteo>, fecha: str): List<ErrorConteo>
+        +aplicar(lectura: LecturaPlanilla, fecha: str): ResultadoConteo
+    }
+
+    class ResultadoConteo {
+        +ajustados: int
+        +sin_diferencia: int
+        +sin_contar: int
+        +umbrales_recalculados: int
+        +alertas_nuevas: List<Alerta>
+        +errores: List<ErrorConteo>
+        +aplicado(): bool
+    }
+}
+
 ' ---------------- Relaciones del dominio ----------------
 Repuesto "0..*" --> "1" Marca : pertenece a
 Repuesto "0..*" --> "1" Categoria : pertenece a
@@ -268,5 +311,16 @@ ReglaAlerta ..> Repuesto : evalúa
 MotorAlertas o-- "1..*" ReglaAlerta : aplica
 MotorAlertas --> RepositorioAlertas
 MotorAlertas ..> Alerta : crea
+
+' ---------------- Conteo inicial ----------------
+PlanillaConteo ..> Repuesto : lista
+PlanillaConteo ..> LecturaPlanilla : crea
+LecturaPlanilla *-- "0..*" FilaConteo
+LecturaPlanilla *-- "0..*" ErrorConteo
+ServicioConteoInicial --> GestorInventarioBD : registrar_conteo
+ServicioConteoInicial --> MotorAlertas : revisa contados
+ServicioConteoInicial ..> ServicioParametrosStock : crea (fábrica)
+ServicioConteoInicial ..> LecturaPlanilla : aplica
+ServicioConteoInicial ..> ResultadoConteo : crea
 
 @enduml

@@ -1,10 +1,10 @@
 # 📐 Diagrama de Clases UML — Gestor de Inventario
 
-> Actualizado el 15/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada` y diseño del **módulo de alertas**.
+> Actualizado el 20/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada`, **módulo de alertas** y **conteo inicial** con planilla.
 > La misma información está en `diagramaUML.puml` (PlantUML) y en la imagen `Diagrama_Clases_Gestor_Stock.png`.
 
 **Notación** (Unidades 2 y 3 de POO): `+` público, `-` privado, `*` método abstracto, `<<abstract>>` clase abstracta (ABC).
-Relaciones: `<|--` herencia ("es un"), `o--` agregación ("tiene un", la parte existe por fuera), `-->` asociación ("usa un"), `..>` dependencia ("depende de").
+Relaciones: `<|--` herencia ("es un"), `o--` agregación ("tiene un", la parte existe por fuera), `*--` composición (la parte vive y muere con el todo), `-->` asociación ("usa un"), `..>` dependencia ("depende de").
 
 ## 1. Modelo de dominio, persistencia y parsers
 
@@ -260,3 +260,58 @@ classDiagram
 ```
 
 Las clases `Repuesto`, `MovimientoStock`, `Alerta`, `GestorInventarioBD` y `RepositorioAlertas` del segundo diagrama son las mismas del primero; se repiten solo como referencia de las relaciones.
+
+## 3. Conteo inicial con planilla (modules/conteo.py)
+
+`PlanillaConteo` solo conoce el formato del Excel; `ServicioConteoInicial` coordina el conteo (todo o nada), recalcula umbrales y revisa las alertas de los repuestos contados. `*--` es composición: las filas y los errores existen solo dentro de una lectura.
+
+```mermaid
+classDiagram
+    class PlanillaConteo {
+        +generar(ruta, repuestos, marcas, categorias) int
+        +leer(ruta: str) LecturaPlanilla
+    }
+    class LecturaPlanilla {
+        +List~FilaConteo~ filas
+        +List~ErrorConteo~ errores
+    }
+    class FilaConteo {
+        <<frozen>>
+        +int fila
+        +int repuesto_id
+        +str codigo
+        +Optional~float~ cantidad_contada
+    }
+    class ErrorConteo {
+        <<frozen>>
+        +int fila
+        +str codigo
+        +str mensaje
+    }
+    class ServicioConteoInicial {
+        -GestorInventarioBD gestor
+        -MotorAlertas motor
+        -Callable fabrica_parametros
+        +validar(filas, fecha: str) List~ErrorConteo~
+        +aplicar(lectura: LecturaPlanilla, fecha: str) ResultadoConteo
+    }
+    class ResultadoConteo {
+        +int ajustados
+        +int sin_diferencia
+        +int sin_contar
+        +int umbrales_recalculados
+        +List~Alerta~ alertas_nuevas
+        +List~ErrorConteo~ errores
+        +aplicado() bool
+    }
+
+    PlanillaConteo ..> Repuesto : lista
+    PlanillaConteo ..> LecturaPlanilla : crea
+    LecturaPlanilla *-- "0..*" FilaConteo
+    LecturaPlanilla *-- "0..*" ErrorConteo
+    ServicioConteoInicial --> GestorInventarioBD : registrar_conteo
+    ServicioConteoInicial --> MotorAlertas : revisa contados
+    ServicioConteoInicial ..> ServicioParametrosStock : crea (fábrica)
+    ServicioConteoInicial ..> LecturaPlanilla : aplica
+    ServicioConteoInicial ..> ResultadoConteo : crea
+```

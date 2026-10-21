@@ -98,7 +98,7 @@ class PruebaReglas(unittest.TestCase):
         en_cm = ReglaCritico().mensaje(repuesto(stock=30, minimo=50, reorden=80, maximo=300, unidad="cm"))
         una = ReglaReorden().mensaje(repuesto(stock=1, minimo=0, reorden=1, maximo=2))
         self.assertIn("quedan 30 cm", en_cm)
-        self.assertIn("quedan 1 unidad ", una)
+        self.assertIn("queda 1 unidad ", una)
 
     def test_todas_las_reglas_cumplen_el_mismo_contrato(self):
         # Liskov: cualquier regla se puede usar en lugar de otra

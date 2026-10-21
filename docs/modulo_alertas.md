@@ -1,6 +1,6 @@
 # 🔔 Módulo de alertas — análisis y diseño
 
-> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Paso 6 — conteo físico — hecho el 20/10/2026).
+> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6 y 7 — conteo físico y conteo inicial con planilla — hechos el 20/10/2026).
 > Diagrama de clases: `docs/diagrama_UML.md` (sección 2) y `docs/diagramaUML.puml`.
 
 El módulo avisa cuándo hay que reponer un repuesto, cuándo está en riesgo de faltar y cuándo hay stock de más. Cada repuesto tiene **sus propios umbrales**, calculados a partir de cuánto se usa: un mismo stock mínimo para todos no sirve (lo mostró el EDA, `templates/eda_repuestos.ipynb`).
@@ -183,4 +183,19 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
 
         > **Hallazgo:** `ServicioParametrosStock.desde_historial` toma el período del primer al **último** movimiento. Un conteo hecho hoy estira el período (en el histórico, de 212 a 289 días), así que el uso diario baja y los umbrales pueden bajar un poco (6204: de 2 / 4 / 18 a 2 / 3 / 17). Es correcto: desde agosto pasó tiempo sin compras. Conviene **recalcular los umbrales después del conteo inicial**.
 
-    7. Pendiente: conteo inicial de los 192 repuestos (desde la interfaz o una planilla), recalcular umbrales y después la pantalla de alertas en la interfaz.
+    7. ~~Conteo inicial con planilla~~ (20/10): `modules/conteo.py` (`PlanillaConteo`, `ServicioConteoInicial`, `LecturaPlanilla`, `FilaConteo`, `ErrorConteo`, `ResultadoConteo`, `PlanillaConteoInvalidaError`) y el comando `apps/conteo_inicial.py`. Pruebas: `tests/test_conteo_inicial.py` (15 pruebas, incluye los 192 repuestos reales).
+
+        ```text
+        python apps/conteo_inicial.py generar   -> data/conteo_inicial.xlsx (192 repuestos activos)
+        (se completa la columna "Cantidad contada" recorriendo el taller)
+        python apps/conteo_inicial.py aplicar   -> corrige el stock, recalcula umbrales y revisa alertas
+        ```
+
+        - La planilla va ordenada por categoría, marca y código (para recorrer el taller estante por estante). La única columna a completar está en amarillo y Excel solo acepta números ≥ 0 (prevención de errores).
+        - `PlanillaConteo` solo conoce el formato del Excel; `ServicioConteoInicial` no sabe nada de Excel (SRP). Si mañana el conteo se carga desde la interfaz web, se reutiliza el servicio.
+        - **Todo o nada:** primero se validan todas las filas (ID repetido o inexistente, código que no corresponde al ID, texto en vez de número, decimales en un repuesto por unidad). Con un solo error no se guarda nada y se informa fila y código.
+        - **Conteo por partes:** las filas vacías se saltean, así que se puede contar un sector, aplicar, y seguir otro día.
+        - Después de guardar, los umbrales se recalculan con el período hasta la fecha del conteo (por eso el `ServicioParametrosStock` se crea con una *fábrica* recién en ese momento) y las alertas se revisan **solo para los repuestos contados**: los demás todavía tienen el stock inflado y darían avisos falsos.
+        - De paso se corrigió la concordancia de los mensajes: "queda 1 unidad" / "quedan 3 unidades".
+
+    8. Pendiente: hacer el conteo real en el taller; después, la pantalla de alertas en la interfaz web (lista de abiertas + botón "Ya lo pedí").

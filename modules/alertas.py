@@ -233,6 +233,12 @@ class ServicioParametrosStock:
 
 # ---------------------------------------------------------------- qué condición dispara cada alerta
 
+def _quedan(repuesto: Repuesto) -> str:
+    """"queda 1 unidad" / "quedan 3 unidades" / "quedan 30 cm" (concordancia del verbo)."""
+    verbo = "queda" if repuesto.unidad_medida == "unidad" and repuesto.stock_actual == 1 else "quedan"
+    return f"{verbo} {_cantidad(repuesto, repuesto.stock_actual)}"
+
+
 def _cantidad(repuesto: Repuesto, valor: float) -> str:
     """Formatea una cantidad con su unidad: "3 unidades", "1 unidad", "120 cm", "3,05 cm"."""
     numero = f"{valor:g}".replace(".", ",")
@@ -271,7 +277,7 @@ class ReglaReorden(ReglaAlerta):
     def mensaje(self, repuesto: Repuesto) -> str:
         return (
             f"{ETIQUETAS_TIPO_ALERTA[self.tipo]} — {repuesto.codigo}: "
-            f"quedan {_cantidad(repuesto, repuesto.stock_actual)} "
+            f"{_quedan(repuesto)} "
             f"({ETIQUETAS_UMBRALES['punto_reorden'].lower()} {_cantidad(repuesto, repuesto.punto_reorden)}). "
             f"Sugerencia: pedir {_cantidad(repuesto, repuesto.calcular_sugerencia_compra())}."
         )
@@ -291,7 +297,7 @@ class ReglaCritico(ReglaAlerta):
             return f"{ETIQUETAS_ESTADO[EstadoStock.AGOTADO]} — {repuesto.codigo}: no queda stock. {sugerencia}"
         return (
             f"{ETIQUETAS_TIPO_ALERTA[self.tipo]} — {repuesto.codigo}: "
-            f"quedan {_cantidad(repuesto, repuesto.stock_actual)} "
+            f"{_quedan(repuesto)} "
             f"({ETIQUETAS_UMBRALES['stock_minimo'].lower()}: {_cantidad(repuesto, repuesto.stock_minimo)}). "
             f"{sugerencia}"
         )
