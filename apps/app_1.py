@@ -13,7 +13,8 @@ Ejecutar desde la raíz del proyecto:
 from collections import Counter
 from datetime import date
 
-from flask import Flask, flash, g, redirect, render_template, session, url_for
+from flask import (Flask, flash, g, redirect, render_template, request,
+                   session, url_for)
 
 from auth_module.core.auth_manager import AuthManager
 from auth_module.core.db.sqlite_repository import SQLiteUserRepository
@@ -25,11 +26,12 @@ from config import (BASE_DIR, DATABASE_URL, RUTA_BD_USUARIOS,
                     RUTA_EXCEL_HISTORICO, SECRET_KEY)
 from modules.alertas import (ETIQUETAS_ATENDER_ALERTA, ETIQUETAS_ESTADO,
                              ETIQUETAS_TIPO_ALERTA, MotorAlertas,
-                             reglas_por_defecto)
+                             reglas_por_defecto, texto_cantidad)
 from modules.base_datos import inicializar_si_hace_falta, obtener_conexion
 from modules.crud import (AlertaNoEncontradaError, GestorInventarioBD,
                           RepositorioAlertas)
 from modules.modelos import EstadoStock
+from modules.movimientos import MovimientoInvalidoError, ServicioMovimientos
 
 # Color de la etiqueta (badge) de cada estado. Es una decisión visual, por eso
 # vive en la capa de presentación y no en el modelo.
@@ -116,6 +118,51 @@ def filas_de_alertas(gestor: GestorInventarioBD, alertas) -> list:
     return filas
 
 
+# ---------------------------------------------------------------- Movimientos (datos para el formulario)
+
+# Opciones del formulario "Registrar movimiento". Las palabras son las del
+# taller; el valor es lo que viaja al servidor.
+TIPOS_MOVIMIENTO_FORMULARIO = {
+    "egreso": "Quitar (se usó)",
+    "ingreso": "Agregar (llegó una compra)",
+    "conteo": "Hay en el estante (conteo)",
+}
+
+
+def opciones_de_repuestos(gestor: GestorInventarioBD) -> dict:
+    """Texto que se ve en el buscador -> repuesto.
+
+    El buscador muestra "código · marca · categoría", así se elige
+    reconociendo el repuesto en vez de tener que recordar el código exacto.
+    """
+    marcas = {m.id: m.nombre for m in gestor.obtener_marcas()}
+    categorias = {c.id: c.nombre for c in gestor.obtener_categorias()}
+    return {
+        f"{r.codigo} · {marcas.get(r.marca_id, '')} · {categorias.get(r.categoria_id, '')}": r
+        for r in gestor.obtener_repuestos()
+    }
+
+
+def buscar_repuesto_elegido(opciones: dict, texto: str):
+    """Devuelve el repuesto elegido, o None si el texto no corresponde a uno solo.
+    Acepta la opción completa de la lista o el código solo, si no se repite."""
+    texto = (texto or "").strip()
+    if texto in opciones:
+        return opciones[texto]
+    por_codigo = [r for r in opciones.values() if r.codigo == texto]
+    return por_codigo[0] if len(por_codigo) == 1 else None
+
+
+def mensaje_de_resultado(tipo: str, cantidad: float, resultado) -> str:
+    rep = resultado.repuesto
+    if tipo == "conteo" and resultado.movimiento_id is None:
+        return f"Listo: {rep.codigo} ya tenía {texto_cantidad(rep, rep.stock_actual)}, no hubo que corregir nada."
+    accion = {"ingreso": "Se agregaron", "egreso": "Se quitaron", "conteo": "Stock corregido:"}[tipo]
+    if tipo == "conteo":
+        return f"Listo. {accion} {rep.codigo} quedó en {texto_cantidad(rep, rep.stock_actual)}."
+    return f"Listo. {accion} {texto_cantidad(rep, cantidad)} de {rep.codigo}. Ahora hay {texto_cantidad(rep, rep.stock_actual)}."
+
+
 # ---------------------------------------------------------------- Rutas
 
 def registrar_rutas(app: Flask) -> None:
@@ -179,6 +226,58 @@ def registrar_rutas(app: Flask) -> None:
         else:
             flash("No hay alertas nuevas.", "success")
         return redirect(url_for("alertas"))
+
+    @app.route("/movimientos/nuevo", methods=["GET", "POST"])
+    @login_required
+    def registrar_movimiento():
+        """Formulario para cargar un uso, una compra o un conteo de un repuesto."""
+        conexion = obtener_bd()
+        gestor = GestorInventarioBD(conexion)
+        opciones = opciones_de_repuestos(gestor)
+        hoy = date.today().isoformat()
+        datos = {"tipo": "egreso", "fecha": hoy, "repuesto": "", "cantidad": "", "proveedor_id": ""}
+        error = None
+
+        if request.method == "POST":
+            datos.update({k: request.form.get(k, "").strip() for k in datos})
+            try:
+                rep = buscar_repuesto_elegido(opciones, datos["repuesto"])
+                if rep is None:
+                    raise MovimientoInvalidoError("Elegí un repuesto de la lista.")
+                try:
+                    cantidad = float(datos["cantidad"].replace(",", "."))
+                except ValueError:
+                    raise MovimientoInvalidoError("Escribí la cantidad con números.") from None
+                motor = MotorAlertas(reglas_por_defecto(), RepositorioAlertas(conexion))
+                servicio = ServicioMovimientos(gestor, motor)
+                if datos["tipo"] == "ingreso":
+                    proveedor_id = int(datos["proveedor_id"]) if datos["proveedor_id"] else None
+                    resultado = servicio.registrar_ingreso(rep.id, cantidad, datos["fecha"], proveedor_id)
+                elif datos["tipo"] == "egreso":
+                    resultado = servicio.registrar_egreso(rep.id, cantidad, datos["fecha"])
+                elif datos["tipo"] == "conteo":
+                    resultado = servicio.registrar_conteo(rep.id, cantidad, datos["fecha"])
+                else:
+                    raise MovimientoInvalidoError("Elegí qué querés registrar.")
+            except MovimientoInvalidoError as e:
+                error = str(e)
+            else:
+                flash(mensaje_de_resultado(datos["tipo"], cantidad, resultado), "success")
+                for alerta in resultado.alertas_nuevas:
+                    flash(f"Nuevo aviso — {ETIQUETAS_TIPO_ALERTA[alerta.tipo]}: {rep.codigo}. "
+                          "Lo ves en Alertas.", "alerta")
+                # POST -> redirect -> GET: queda el formulario limpio para cargar otro
+                return redirect(url_for("registrar_movimiento"))
+
+        return render_template(
+            "registrar_movimiento.html",
+            datos=datos,
+            error=error,
+            tipos=TIPOS_MOVIMIENTO_FORMULARIO,
+            opciones=opciones,
+            proveedores=gestor.obtener_proveedores(solo_activos=True),
+            hoy=hoy,
+        ), (400 if error else 200)
 
     @app.context_processor
     def datos_del_menu():

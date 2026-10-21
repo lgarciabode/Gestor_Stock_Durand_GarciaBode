@@ -1,6 +1,6 @@
 # 📐 Diagrama de Clases UML — Gestor de Inventario
 
-> Actualizado el 20/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada`, **módulo de alertas** y **conteo inicial** con planilla.
+> Actualizado el 20/10/2026: modelo de repuestos con `codigo` (marca + código), categorías unificadas, `LineaNormalizada`, **módulo de alertas**, **conteo inicial** con planilla y **registro de movimientos**.
 > La misma información está en `diagramaUML.puml` (PlantUML) y en la imagen `Diagrama_Clases_Gestor_Stock.png`.
 
 **Notación** (Unidades 2 y 3 de POO): `+` público, `-` privado, `*` método abstracto, `<<abstract>>` clase abstracta (ABC).
@@ -314,4 +314,30 @@ classDiagram
     ServicioConteoInicial ..> ServicioParametrosStock : crea (fábrica)
     ServicioConteoInicial ..> LecturaPlanilla : aplica
     ServicioConteoInicial ..> ResultadoConteo : crea
+```
+
+## 4. Movimientos del día a día (modules/movimientos.py)
+
+`ServicioMovimientos` valida cada ingreso, egreso o conteo (precondiciones), lo guarda y revisa las alertas **solo del repuesto movido**. La pantalla "Registrar movimiento" (`apps/app_1.py`) lo usa sin agregar reglas propias.
+
+```mermaid
+classDiagram
+    class ServicioMovimientos {
+        -GestorInventarioBD gestor
+        -MotorAlertas motor
+        -Callable hoy
+        +registrar_ingreso(repuesto_id, cantidad, fecha, proveedor_id) ResultadoMovimiento
+        +registrar_egreso(repuesto_id, cantidad, fecha) ResultadoMovimiento
+        +registrar_conteo(repuesto_id, cantidad_contada, fecha) ResultadoMovimiento
+    }
+    class ResultadoMovimiento {
+        +Optional~int~ movimiento_id
+        +Repuesto repuesto
+        +List~Alerta~ alertas_nuevas
+    }
+
+    ServicioMovimientos --> GestorInventarioBD : registra
+    ServicioMovimientos --> MotorAlertas : revisa el repuesto movido
+    ServicioMovimientos ..> MovimientoStock : crea
+    ServicioMovimientos ..> ResultadoMovimiento : crea
 ```

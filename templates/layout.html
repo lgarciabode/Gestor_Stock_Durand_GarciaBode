@@ -23,7 +23,7 @@
       <a href="{{ url_for('index') }}" class="{{ 'activo' if request.endpoint == 'index' }}">Inicio</a>
       {# Se habilitan a medida que se crea cada pantalla #}
       <span class="pendiente" title="Próximamente">Movimientos</span>
-      <span class="pendiente" title="Próximamente">Registrar movimiento</span>
+      <a href="{{ url_for('registrar_movimiento') }}" class="{{ 'activo' if request.endpoint == 'registrar_movimiento' }}">Registrar movimiento</a>
       <span class="pendiente" title="Próximamente">Catálogo</span>
       <a href="{{ url_for('alertas') }}" class="{{ 'activo' if request.endpoint == 'alertas' }}">
         Alertas

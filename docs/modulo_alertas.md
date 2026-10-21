@@ -1,6 +1,6 @@
 # 🔔 Módulo de alertas — análisis y diseño
 
-> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6, 7 y 8 — conteo físico, conteo inicial con planilla y pantalla de alertas — hechos el 20/10/2026).
+> Estado: **en desarrollo** (diseño aprobado el 14/10/2026; Pasos 1 a 4 de desarrollo — base de datos, modelos, cálculo y guardado de umbrales — hechos el 15/10/2026; Paso 5 — reglas, motor y repositorio de alertas — hecho el 16/10/2026; Pasos 6 a 9 — conteo físico, conteo inicial con planilla, pantalla de alertas y registro de movimientos — hechos el 20/10/2026).
 > Diagrama de clases: `docs/diagrama_UML.md` (sección 2) y `docs/diagramaUML.puml`.
 
 El módulo avisa cuándo hay que reponer un repuesto, cuándo está en riesgo de faltar y cuándo hay stock de más. Cada repuesto tiene **sus propios umbrales**, calculados a partir de cuánto se usa: un mismo stock mínimo para todos no sirve (lo mostró el EDA, `templates/eda_repuestos.ipynb`).
@@ -212,4 +212,12 @@ Para cada tarea: *¿quién tiene la información necesaria? ¿quién debería se
 
         > **Cuidado:** hasta que se haga el conteo inicial, "Revisar todo" genera alertas falsas (con el histórico, 31), porque el stock de los repuestos no contados es la suma de todas las compras.
 
-    9. Pendiente: conteo real en el taller; pantalla para registrar movimientos (que llame a `motor.revisar` después de cada egreso o ingreso).
+    9. ~~Registrar movimiento~~ (20/10): `modules/movimientos.py` (`ServicioMovimientos`, `ResultadoMovimiento`, `MovimientoInvalidoError`), ruta `GET/POST /movimientos/nuevo` y template `templates/registrar_movimiento.html`. Pruebas: `tests/test_movimientos.py` (15) y `tests/test_app_movimientos.py` (11, se saltean sin Flask).
+
+        - Tres opciones con palabras del taller: **Quitar (se usó)**, **Agregar (llegó una compra)** con proveedor opcional y **Hay en el estante (conteo)**.
+        - Después de guardar se revisan las alertas de **ese** repuesto: si llegó al punto de reorden aparece "Nuevo aviso — Hay que pedir" y sube el contador del menú. Así las alertas aparecen solas, sin "Revisar todo".
+        - Contratos (`MovimientoInvalidoError`, no se guarda nada): repuesto existente y activo; cantidad > 0 y entera si se cuenta por unidad; fecha válida y no futura; proveedor existente y activo; **no se puede quitar más de lo que hay** (si en el estante hay más, primero se registra un conteo).
+        - El repuesto se elige con un buscador "código · marca · categoría" (reconocer antes que recordar); también acepta el código solo. Con un error, el formulario muestra el motivo y conserva lo cargado; si sale bien, vuelve limpio para cargar otro (POST → redirect → GET).
+        - Las reglas están en `ServicioMovimientos`, no en Flask: la misma lógica sirve para otra interfaz.
+
+    10. Pendiente: conteo real en el taller; pantalla "Movimientos" (historial con filtros y descarga).

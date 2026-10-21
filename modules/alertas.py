@@ -244,11 +244,12 @@ class ServicioParametrosStock:
 def _quedan(repuesto: Repuesto) -> str:
     """"queda 1 unidad" / "quedan 3 unidades" / "quedan 30 cm" (concordancia del verbo)."""
     verbo = "queda" if repuesto.unidad_medida == "unidad" and repuesto.stock_actual == 1 else "quedan"
-    return f"{verbo} {_cantidad(repuesto, repuesto.stock_actual)}"
+    return f"{verbo} {texto_cantidad(repuesto, repuesto.stock_actual)}"
 
 
-def _cantidad(repuesto: Repuesto, valor: float) -> str:
-    """Formatea una cantidad con su unidad: "3 unidades", "1 unidad", "120 cm", "3,05 cm"."""
+def texto_cantidad(repuesto: Repuesto, valor: float) -> str:
+    """Formatea una cantidad con su unidad: "3 unidades", "1 unidad", "120 cm", "3,05 cm".
+    Es pública porque también la usa la interfaz web para sus mensajes."""
     numero = f"{valor:g}".replace(".", ",")
     if repuesto.unidad_medida == "cm":
         return f"{numero} cm"
@@ -286,8 +287,8 @@ class ReglaReorden(ReglaAlerta):
         return (
             f"{ETIQUETAS_TIPO_ALERTA[self.tipo]} — {repuesto.codigo}: "
             f"{_quedan(repuesto)} "
-            f"({ETIQUETAS_UMBRALES['punto_reorden'].lower()} {_cantidad(repuesto, repuesto.punto_reorden)}). "
-            f"Sugerencia: pedir {_cantidad(repuesto, repuesto.calcular_sugerencia_compra())}."
+            f"({ETIQUETAS_UMBRALES['punto_reorden'].lower()} {texto_cantidad(repuesto, repuesto.punto_reorden)}). "
+            f"Sugerencia: pedir {texto_cantidad(repuesto, repuesto.calcular_sugerencia_compra())}."
         )
 
 
@@ -300,13 +301,13 @@ class ReglaCritico(ReglaAlerta):
         return repuesto.esta_en_estado_critico()
 
     def mensaje(self, repuesto: Repuesto) -> str:
-        sugerencia = f"Sugerencia: pedir {_cantidad(repuesto, repuesto.calcular_sugerencia_compra())}."
+        sugerencia = f"Sugerencia: pedir {texto_cantidad(repuesto, repuesto.calcular_sugerencia_compra())}."
         if repuesto.esta_agotado():
             return f"{ETIQUETAS_ESTADO[EstadoStock.AGOTADO]} — {repuesto.codigo}: no queda stock. {sugerencia}"
         return (
             f"{ETIQUETAS_TIPO_ALERTA[self.tipo]} — {repuesto.codigo}: "
             f"{_quedan(repuesto)} "
-            f"({ETIQUETAS_UMBRALES['stock_minimo'].lower()}: {_cantidad(repuesto, repuesto.stock_minimo)}). "
+            f"({ETIQUETAS_UMBRALES['stock_minimo'].lower()}: {texto_cantidad(repuesto, repuesto.stock_minimo)}). "
             f"{sugerencia}"
         )
 
@@ -322,8 +323,8 @@ class ReglaSobrestock(ReglaAlerta):
     def mensaje(self, repuesto: Repuesto) -> str:
         return (
             f"{ETIQUETAS_TIPO_ALERTA[self.tipo]} — {repuesto.codigo}: "
-            f"hay {_cantidad(repuesto, repuesto.stock_actual)} "
-            f"({ETIQUETAS_UMBRALES['stock_maximo'].lower()} {_cantidad(repuesto, repuesto.stock_maximo)}). "
+            f"hay {texto_cantidad(repuesto, repuesto.stock_actual)} "
+            f"({ETIQUETAS_UMBRALES['stock_maximo'].lower()} {texto_cantidad(repuesto, repuesto.stock_maximo)}). "
             f"No hace falta comprar."
         )
 

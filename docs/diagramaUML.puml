@@ -271,6 +271,23 @@ package "Conteo inicial (modules/conteo.py)" {
     }
 }
 
+package "Movimientos del día a día (modules/movimientos.py)" {
+    class ServicioMovimientos {
+        -gestor: GestorInventarioBD
+        -motor: MotorAlertas
+        -hoy: Callable[[], str]
+        +registrar_ingreso(repuesto_id: int, cantidad: float, fecha: str, proveedor_id: Optional<int>): ResultadoMovimiento
+        +registrar_egreso(repuesto_id: int, cantidad: float, fecha: str): ResultadoMovimiento
+        +registrar_conteo(repuesto_id: int, cantidad_contada: float, fecha: str): ResultadoMovimiento
+    }
+
+    class ResultadoMovimiento {
+        +movimiento_id: Optional<int>
+        +repuesto: Repuesto
+        +alertas_nuevas: List<Alerta>
+    }
+}
+
 ' ---------------- Relaciones del dominio ----------------
 Repuesto "0..*" --> "1" Marca : pertenece a
 Repuesto "0..*" --> "1" Categoria : pertenece a
@@ -322,5 +339,11 @@ ServicioConteoInicial --> MotorAlertas : revisa contados
 ServicioConteoInicial ..> ServicioParametrosStock : crea (fábrica)
 ServicioConteoInicial ..> LecturaPlanilla : aplica
 ServicioConteoInicial ..> ResultadoConteo : crea
+
+' ---------------- Movimientos del día a día ----------------
+ServicioMovimientos --> GestorInventarioBD : registra
+ServicioMovimientos --> MotorAlertas : revisa el repuesto movido
+ServicioMovimientos ..> MovimientoStock : crea
+ServicioMovimientos ..> ResultadoMovimiento : crea
 
 @enduml

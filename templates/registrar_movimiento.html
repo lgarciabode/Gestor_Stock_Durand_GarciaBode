@@ -1,0 +1,74 @@
+{% extends "layout.html" %}
+{% block titulo %}Registrar movimiento{% endblock %}
+{% block encabezado %}Registrar movimiento{% endblock %}
+{% block subtitulo %}Cargá lo que se usó, lo que llegó o lo que hay en el estante{% endblock %}
+
+{% block contenido %}
+{% if error %}
+  <div class="aviso aviso-danger" role="alert">{{ error }}</div>
+{% endif %}
+
+<section class="panel">
+  <form method="post" class="formulario" novalidate>
+    <fieldset class="opciones-tipo">
+      <legend>¿Qué pasó?</legend>
+      {% for valor, texto in tipos.items() %}
+        <label class="opcion">
+          <input type="radio" name="tipo" value="{{ valor }}" {{ 'checked' if datos.tipo == valor }}>
+          {{ texto }}
+        </label>
+      {% endfor %}
+    </fieldset>
+
+    <label class="campo">
+      Repuesto
+      <input type="text" name="repuesto" list="lista-repuestos" value="{{ datos.repuesto }}"
+             placeholder="Escribí el código, la marca o la categoría" autocomplete="off" required>
+      <datalist id="lista-repuestos">
+        {% for texto in opciones %}<option value="{{ texto }}">{% endfor %}
+      </datalist>
+    </label>
+
+    <div class="fila-campos">
+      <label class="campo">
+        <span id="etiqueta-cantidad">Cantidad</span>
+        <input type="number" name="cantidad" value="{{ datos.cantidad }}" min="0" step="any" required>
+      </label>
+      <label class="campo">
+        Fecha
+        <input type="date" name="fecha" value="{{ datos.fecha }}" max="{{ hoy }}" required>
+      </label>
+      <label class="campo" id="campo-proveedor">
+        Proveedor <span class="secundario">(opcional)</span>
+        <select name="proveedor_id">
+          <option value="">—</option>
+          {% for p in proveedores %}
+            <option value="{{ p.id }}" {{ 'selected' if datos.proveedor_id == p.id|string }}>{{ p.nombre }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div>
+      <button type="submit" class="boton">Guardar</button>
+    </div>
+  </form>
+</section>
+
+<script>
+  // Solo ayuda visual: el proveedor tiene sentido en una compra, y en un
+  // conteo la cantidad es "cuántos hay". Sin JavaScript el formulario funciona igual.
+  (function () {
+    const radios = document.querySelectorAll('input[name="tipo"]');
+    const proveedor = document.getElementById('campo-proveedor');
+    const etiqueta = document.getElementById('etiqueta-cantidad');
+    function actualizar() {
+      const tipo = document.querySelector('input[name="tipo"]:checked').value;
+      proveedor.hidden = tipo !== 'ingreso';
+      etiqueta.textContent = tipo === 'conteo' ? '¿Cuántos hay en el estante?' : 'Cantidad';
+    }
+    radios.forEach(r => r.addEventListener('change', actualizar));
+    actualizar();
+  })();
+</script>
+{% endblock %}

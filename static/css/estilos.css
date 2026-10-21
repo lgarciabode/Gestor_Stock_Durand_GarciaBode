@@ -126,3 +126,22 @@ h1, h2 { margin: 0; }
 details summary { cursor: pointer; }
 .lista-simple { columns: 4; margin: 12px 0 0; padding-left: 18px; color: var(--plomo-700); }
 .tabla .badge { white-space: nowrap; }
+
+/* ---------- Formularios ---------- */
+.formulario { display: flex; flex-direction: column; gap: 18px; max-width: 760px; }
+.campo { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 13px; color: var(--plomo-700); }
+.campo[hidden] { display: none; }
+.campo input, .campo select {
+  font: inherit; font-weight: 400; color: var(--plomo-900);
+  padding: 9px 12px; border: 1px solid var(--plomo-300); border-radius: 6px; background: #fff;
+}
+.campo input:focus, .campo select:focus { outline: 2px solid var(--pino-500); outline-offset: 1px; border-color: var(--pino-500); }
+.fila-campos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.opciones-tipo { border: 0; padding: 0; margin: 0; display: flex; gap: 10px; flex-wrap: wrap; }
+.opciones-tipo legend { font-weight: 600; font-size: 13px; color: var(--plomo-700); margin-bottom: 8px; }
+.opcion {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 10px 14px; border: 1px solid var(--plomo-300); border-radius: 8px; background: #fff;
+}
+.opcion:has(input:checked) { border-color: var(--pino-500); background: var(--pino-100); color: var(--pino-700); font-weight: 600; }
+.aviso-alerta { background: var(--cobrizo-100); color: var(--cobrizo-700); }
