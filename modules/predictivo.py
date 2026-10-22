@@ -6,6 +6,7 @@ Se realizan dos tipos de predicciones:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from modules.crud import GestorInventarioBD
 from typing import Any, List, Dict, Optional
 import pandas as pd
 import numpy as np
@@ -91,7 +92,7 @@ class PreprocesadorPredicciones:
 
     @staticmethod
     def preparar_serie_mensual(
-        df_movimientos: pd.DataFrame, repuesto_id: str, meses_historicos: int = 12, tipos_demanda: tuple = ('INGRESO', ), fecha_referencia: Optional[pd.Timestamp] = None) -> pd.Series:
+        df_movimientos: pd.DataFrame, repuesto_id: Any, meses_historicos: int = 12, tipos_demanda: tuple = ('INGRESO', ), fecha_referencia: Optional[pd.Timestamp] = None) -> pd.Series:
         """Filtra movimientos por repuestos y tipo de demanda, agrupa por mes y rellena vacios con cer"""
         if df_movimientos.empty:
             return pd.Series(dtype = float)
@@ -131,48 +132,135 @@ class ResultadoPrediccion:
     sugerencia_recompra_dias: Dict[str, float]    # {'30d': X, '60d': Y, '90d': Z}
 
 
+# class ServicioPrediccion:
+#     """Orquestador principal de las predicciones coordina lectura, prediccion y calculo de reabastecimiento."""
+
+#     def __init__(self, gestor_bd: Optional[GestorInventarioBD] = None, fecha_referencia: Optional[str] = None):#, gestor_bd = None, repositorio_datos = None):
+#         """gestor_bd es instancia de GestorInventarioBD del crud.py"""
+#         self.gestor_bd = gestor_bd #or repositorio_datos
+#         self.fecha_referencia = fecha_referencia
+
+#     def generar_predicciones_catalogo(self, meses_a_proyectar: int = 3, fecha_referencia: Optional[str] = None, tipos_demanda = tuple('INGRESO',)) -> List[ResultadoPrediccion]:
+#         """Genera proyecciones y sugerencias para todo el catalogo activo"""
+#         if self.gestor_bd is None:
+#             raise ValueError("No se proporcionó un gestor de base de datos válido.")
+        
+#         #Lectura directa desde el CRUD 
+       
+#         df_movimientos = self.gestor_bd.obtener_todos_los_movimientos_df()
+#         df_catalogos = self.gestor_bd.obtener_catalogo_repuestos_df()
+
+#         # Solo los movimientos que representan demanda (ver tipos_demanda)
+#         if 'tipo' in df_movimientos.columns:
+#             df_movimientos = df_movimientos[df_movimientos['tipo'].isin(tipos_demanda)]
+
+#         resultados = []
+
+#         for _, repuesto in df_catalogos.iterrows():
+#             # Convertir a int si es posible (como un "1" de SQLite), si no dejarlo como string ("REP-001"):
+#             r_id = int(repuesto['id']) if str(repuesto['id']).isdigit() else repuesto['id']
+#             descripcion = repuesto.get('descripcion_normalizada', repuesto.get('descripcion', ''))
+
+#             serie = PreprocesadorPredicciones.preparar_serie_mensual(df_movimientos, r_id, tipos_demanda=tipos_demanda,fecha_referencia=fecha_referencia)
+
+#             estrategia = PredictorDemandaFactory.obtener_estrategia(serie)
+#             proyeccion = estrategia.predecir(serie, meses_a_proyectar)
+            
+#             demanda_promedio = round(sum(proyeccion) / len(proyeccion), 2) if proyeccion else 0.0
+#             stock_actual = float(repuesto.get('stock_actual', 0.0))
+
+#             #Acumulados
+#             demanda_30d = round(proyeccion[0], 2) if len(proyeccion) >= 1 else 0.0
+#             demanda_60d = round(sum(proyeccion[:2]), 2) if len(proyeccion) >= 2 else demanda_30d
+#             demanda_90d = round(sum(proyeccion[:3]), 2) if len(proyeccion) >= 3 else demanda_60d
+
+#             #Sugerencias de compra restando stock actual
+#             recompra_30d = max(0.0, round(demanda_30d - stock_actual, 2))
+#             recompra_60d = max(0.0, round(demanda_60d - stock_actual, 2))
+#             recompra_90d = max(0.0, round(demanda_90d - stock_actual, 2))
+
+#             resultados.append(ResultadoPrediccion(
+#                 repuesto_id=r_id,
+#                 descripcion=descripcion,
+#                 metodo_aplicado=estrategia.__class__.__name__,
+#                 demanda_mensual_estimada=demanda_promedio,
+#                 proyeccion_por_mes=proyeccion,
+#                 demanda_acumulada_dias={'30d': demanda_30d, '60d': demanda_60d, '90d': demanda_90d},
+#                 sugerencia_recompra_dias={'30d': recompra_30d, '60d': recompra_60d, '90d': recompra_90d}
+#             ))
+
+#         return resultados
+
 class ServicioPrediccion:
-    """Orquestador principal de las predicciones coordina lectura, prediccion y calculo de reabastecimiento."""
+    """Orquestador principal que coordina la lectura, predicción y cálculo de reabastecimiento."""
 
-    def __init__(self, gestor_bd = None, repositorio_datos = None):
-        """gestor_bd es instancia de GestorInventarioBD del crud.py"""
+    def __init__(
+        self, 
+        gestor_bd: Any = None, 
+        repositorio_datos: Any = None,
+        fecha_referencia: Optional[str] = None  # <--- Acepta fecha_referencia en el constructor
+    ):
         self.gestor_bd = gestor_bd or repositorio_datos
+        self.fecha_referencia_defecto = fecha_referencia
 
-    def generar_predicciones_catalogo(self, meses_a_proyectar: int = 3, fecha_referencia: Optional[str] = None) -> List[ResultadoPrediccion]:
-        """Genera proyecciones y sugerencias para todo el catalogo activo"""
+    def generar_predicciones_catalogo(
+        self, 
+        meses_a_proyectar: int = 3, 
+        tipos_demanda: tuple[str, ...] = ('INGRESO',),  #[cite: 1]
+        fecha_referencia: Optional[str] = None  #[cite: 1]
+    ) -> List[ResultadoPrediccion]:
 
-        #Lectura directa desde el CRUD 
+        if self.gestor_bd is None:
+            raise ValueError("No se proporcionó un gestor de datos válido.")
+
+        # Prioriza la fecha pasada por parámetro; si no, usa la del constructor
+        fecha_ref_efectiva = fecha_referencia or self.fecha_referencia_defecto
+
+        # Soporte híbrido: GestorInventarioBD (con Pandas) o RepositorioSimulado (Mock)
         if hasattr(self.gestor_bd, 'obtener_todos_los_movimientos_df'):
             df_movimientos = self.gestor_bd.obtener_todos_los_movimientos_df()
-            df_catalogos = self.gestor_bd.obtener_catalogo_repuestos_df()
+        elif hasattr(self.gestor_bd, 'obtener_todos_los_movimientos'):
+            res = self.gestor_bd.obtener_todos_los_movimientos()
+            df_movimientos = res if isinstance(res, pd.DataFrame) else pd.DataFrame(res)
         else:
-            df_movimientos = self.gestor_bd.obtener_todos_los_movimientos()
-            df_catalogos = self.gestor_bd.obtener_catalogo_repuestos()
+            df_movimientos = pd.DataFrame()
 
-        # Solo los movimientos que representan demanda (ver tipos_demanda)
-        if 'tipo' in df_movimientos.columns:
-            df_movimientos = df_movimientos[df_movimientos['tipo'].isin(self.tipos_demanda)]
+        if hasattr(self.gestor_bd, 'obtener_catalogo_repuestos_df'):
+            df_catalogos = self.gestor_bd.obtener_catalogo_repuestos_df()
+        elif hasattr(self.gestor_bd, 'obtener_catalogo_repuestos'):
+            res = self.gestor_bd.obtener_catalogo_repuestos()
+            df_catalogos = res if isinstance(res, pd.DataFrame) else pd.DataFrame(res)
+        else:
+            df_catalogos = pd.DataFrame()
 
         resultados = []
 
         for _, repuesto in df_catalogos.iterrows():
-            # Convertir a int si es posible (como un "1" de SQLite), si no dejarlo como string ("REP-001"):
-            r_id = int(repuesto['id']) if str(repuesto['id']).isdigit() else repuesto['id']
-            descripcion = repuesto.get('descripcion_normalizada', repuesto.get('descripcion', ''))
+            r_id = repuesto['id']
+            descripcion = (
+                repuesto.get('descripcion_normalizada') 
+                or repuesto.get('descripcion') 
+                or repuesto.get('codigo') 
+                or 'Sin descripción'
+            )  #[cite: 1]
 
-            serie = PreprocesadorPredicciones.preparar_serie_mensual(df_movimientos, r_id, fecha_referencia=fecha_referencia)
+            serie = PreprocesadorPredicciones.preparar_serie_mensual(
+                df_movimientos, 
+                r_id, 
+                tipos_demanda=tipos_demanda,  #[cite: 1]
+                fecha_referencia=fecha_ref_efectiva  #[cite: 1]
+            )
+            
             estrategia = PredictorDemandaFactory.obtener_estrategia(serie)
             proyeccion = estrategia.predecir(serie, meses_a_proyectar)
-            
+
             demanda_promedio = round(sum(proyeccion) / len(proyeccion), 2) if proyeccion else 0.0
             stock_actual = float(repuesto.get('stock_actual', 0.0))
 
-            #Acumulados
             demanda_30d = round(proyeccion[0], 2) if len(proyeccion) >= 1 else 0.0
             demanda_60d = round(sum(proyeccion[:2]), 2) if len(proyeccion) >= 2 else demanda_30d
             demanda_90d = round(sum(proyeccion[:3]), 2) if len(proyeccion) >= 3 else demanda_60d
 
-            #Sugerencias de compra restando stock actual
             recompra_30d = max(0.0, round(demanda_30d - stock_actual, 2))
             recompra_60d = max(0.0, round(demanda_60d - stock_actual, 2))
             recompra_90d = max(0.0, round(demanda_90d - stock_actual, 2))
